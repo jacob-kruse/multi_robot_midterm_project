@@ -6,7 +6,7 @@ from rps.utilities.misc import *
 from rps.utilities.controllers import *
 
 import numpy as np
-
+convergence_threshold = 1e-3 
 # Instantiate Robotarium object
 N = 5
 r = robotarium.Robotarium(number_of_robots=N, show_figure=True, sim_in_real_time=True)
@@ -31,6 +31,7 @@ y_max = 1
 res = 0.05
 
 
+previous_centroids = np.zeros((N, 2)) # Initialize previous centroids
 
 for k in range(iterations):
 
@@ -71,7 +72,20 @@ for k in range(iterations):
                    
            
           si_velocities[:, robots] = 1 * [(c_x - current_x[robots][0]), (c_y - current_y[robots][0] )]
+    # Compute new centroids
+    new_centroids = np.copy(previous_centroids)
+    for robot in range(N):
+        if w_v[robot] != 0:
+            new_centroids[robot][0] = c_v[robot][0] / w_v[robot]
+            new_centroids[robot][1] = c_v[robot][1] / w_v[robot]
 
+    # Check for convergence
+    movement = np.linalg.norm(new_centroids - previous_centroids, axis=1)
+    if np.all(movement < convergence_threshold):
+        print(f"Converged at iteration {k+1}")
+        break
+
+    previous_centroids = np.copy(new_centroids)
     # Use the barrier certificate to avoid collisions
     si_velocities = si_barrier_cert(si_velocities, x_si)
 
