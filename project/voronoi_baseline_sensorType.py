@@ -60,7 +60,8 @@ for i in range(N):
 
 fig, ax = plt.subplots()
 previous_centroids = np.zeros((N, 2))
-
+previous_H_g = float('inf')
+converged_iteration = -1
 for k in range(iterations):
     x = r.get_poses()
     x_si = uni_to_si_states(x)
@@ -78,7 +79,6 @@ for k in range(iterations):
                     dist = np.sqrt(np.square(ix - current_x[robot]) + np.square(iy - current_y[robot]))
                     distances[robot] = min(distances[robot], dist)
 
-
             min_index = np.argmin(distances)
             c_v[min_index][0] += ix * importance_value
             c_v[min_index][1] += iy * importance_value
@@ -90,17 +90,33 @@ for k in range(iterations):
         sum_x, sum_y = 0, 0
         for j in robot_sensors[robot]:
             sensor_index = list(S).index(j)
-            m_j_i = np.sum(get_sensor())
+            m_j_i = 0
+            c_x_j, c_y_j = 0, 0
+            
+            # Calculate centroid and mass for each sensor type's Voronoi cell
+            for ix in np.arange(x_min, x_max, res):
+                for iy in np.arange(y_min, y_max, res):
+                    q = np.array([ix, iy])
+                    distances = np.full(N, np.inf)
+                    for other_robot in range(N):
+                        if j in robot_sensors[other_robot]:
+                            dist = np.sqrt(np.square(ix - current_x[other_robot]) + np.square(iy - current_y[other_robot]))
+                            distances[other_robot] = min(distances[other_robot], dist)
+                    
+                    min_index = np.argmin(distances)
+                    if min_index == robot:
+                        m_j_i += get_sensor()
+                        c_x_j += ix * get_sensor()
+                        c_y_j += iy * get_sensor()
+            
             if m_j_i > 0:
-                q_x, q_y = np.meshgrid(np.arange(D_x), np.arange(D_y))
-                c_x = np.sum(q_x * get_sensor()) / m_j_i
-                c_y = np.sum(q_y * get_sensor()) / m_j_i
-                sum_x += m_j_i * (c_x - current_x[robot])
-                sum_y += m_j_i * (c_y - current_y[robot])
+                c_x_j /= m_j_i
+                c_y_j /= m_j_i
+                sum_x += m_j_i * (c_x_j - current_x[robot])
+                sum_y += m_j_i * (c_y_j - current_y[robot])
 
-    si_velocities[0, robot] = 2 * float(sum_x)  # Ensure sum_x is treated as a scalar
-    si_velocities[1, robot] = 2 * float(sum_y)  # Ensure sum_y is treated as a scalar
-
+        si_velocities[0, robot] = 2 * float(sum_x)
+        si_velocities[1, robot] = 2 * float(sum_y)
 
     new_centroids = np.copy(previous_centroids) if previous_centroids is not None else np.zeros((N, 2))
     for robot in range(N):
@@ -116,17 +132,18 @@ for k in range(iterations):
                 for ix in np.arange(x_min, x_max, res):
                     for iy in np.arange(y_min, y_max, res):
                         q = np.array([ix, iy])
-                        d_ij = np.linalg.norm(q - x_si[:, i])**2
+                        p_i = x_si[:, i]
+                        d_ij = np.linalg.norm(p_i - q)**2
                         phi_j_q = get_sensor()  # Using get_sensor function
                         integral_sum += d_ij * phi_j_q * res * res
                 H_g += integral_sum
     print(f"Iteration {k + 1}: H_g = {H_g}")
 
-    if previous_centroids is not None:
-        movement = np.linalg.norm(new_centroids - previous_centroids, axis=1)
-        if np.all(movement < convergence_threshold):
-            print(f"Converged at iteration {k+1}")
-            break
+    if abs(previous_H_g - H_g) < convergence_threshold:
+        converged_iteration = k + 1
+        print(f"Converged at iteration {converged_iteration} with H_g = {H_g}")
+        break
+    previous_H_g = H_g
 
     previous_centroids = np.copy(new_centroids)
     #si_velocities = si_barrier_cert(si_velocities, x_si)
