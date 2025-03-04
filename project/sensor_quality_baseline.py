@@ -1,3 +1,4 @@
+import csv
 import numpy as np
 import matplotlib.pyplot as plt
 from scipy.spatial import Voronoi, voronoi_plot_2d
@@ -16,7 +17,7 @@ from descartes import PolygonPatch'''
 
 # Simulation Variables
 N = 5                    # Number of robots
-iterations = 500         # How many iterations do we want (about N*0.033 seconds)
+iterations = 100         # How many iterations do we want (about N*0.033 seconds)
 L = lineGL(N)            # Generated a connected graph Laplacian (for a cylce graph).
 x_min = -1.5             # Upper bound of x coordinate
 x_max = 1.5              # Lower bound of x coordinate
@@ -28,8 +29,17 @@ res = 0.05               # Resolution of coordinates
 hi = np.ones(N)     # Sensor quality set to 1 initially for all sensors
 hi[2] = 0.5         # Sensor quality of 3rd robot is 0.5
 wi = np.zeros(N)    # Weights initially set to zero and calculated later
-kw = 20            # Constant Gain for weights controller
+kw = 1              # Constant Gain for weights controller
 k = 1               # Constant Gain for velocity controller
+
+# Status and Performance Variables
+poses = []
+wij = []
+Cwi = []
+ui = []
+dist_robot = []
+previous_x = None
+previous_y = None
 
 # Instantiate Robotarium object
 r = robotarium.Robotarium(number_of_robots=N, show_figure=True, sim_in_real_time=True)
@@ -49,13 +59,16 @@ for k in range(iterations):
     # Get the poses of the robots and convert to single-integrator poses
     x = r.get_poses()
     x_si = uni_to_si_states(x)
+    poses.append(x_si.tolist())
     current_x = x_si[0,:,None]
     current_y = x_si[1,:,None]
 
     # Instantiate calculation variables to zero
     c_vw = np.zeros((N,2))
     w_vw = np.zeros(N)
-    H = 0
+    cwi = np.zeros((2,N))
+    distance_traveled = np.zeros(N)
+    Hp = 0
 
     # Nested loop that occurs for each coordinate, this is the calculation portion of the code for the Voronoi cells
     for ix in np.arange(x_min,x_max,res):
@@ -84,10 +97,10 @@ for k in range(iterations):
             w_vw[min_index] += importance_value
 
             # Add to the cost value
-            H += 0.5 * ((distances[min_index] ** 2) - wi[min_index]) * importance_value
+            Hp += 0.5 * ((distances[min_index] ** 2) - wi[min_index]) * importance_value
                
     # Print the cost and the Mass of the the Weighted Voronoi Regions
-    print("Cost:", H)
+    print("Cost:", Hp)
     print("Mass of Voronoi:", w_vw)
 
     # Create a Voronoi diagram based on the robot positions
@@ -129,13 +142,40 @@ for k in range(iterations):
         # Calculate the new weights
         wi[robots] += (kw/(2*w_vw[robots])) * summation
 
+        # Calculate the distance travled from the previous iteration
+        if previous_x is not None and previous_y is not None:
+            distance_traveled[robots] = float(np.sqrt((abs(current_x[robots][0] - previous_x[robots][0]) ** 2) + \
+                                                      (abs(current_y[robots][0] - previous_y[robots][0]) ** 2)))
+
         # Calculate the x and y coordinates of the centroids of the Weighted Voronoi Partitions
         if not w_vw[robots] == 0:
             c_x = c_vw[robots][0] / w_vw[robots]
             c_y = c_vw[robots][1] / w_vw[robots] 
 
-            # Calcualte the velcoity of each robot
+            # Calcualte the velocity of each robot
             si_velocities[:, robots] = k * np.array([(c_x - current_x[robots][0]), (c_y - current_y[robots][0])])
+
+            # Append the current centroid and velocity to the lists
+            cwi[:, robots] = np.array([c_x, c_y])
+
+    # If there is a value in the distance array, add the latest calculated distance to the previous iteration
+    if dist_robot:
+        distance_traveled += dist_robot[-1]
+
+    # Update the variables for the previous pose with the current pose to be used in the next calculation
+    previous_x = current_x
+    previous_y = current_y
+
+    # Add the current iteration values to the global lists 
+    wij.append(wi.tolist())
+    Cwi.append(cwi.tolist())
+    ui.append(si_velocities.tolist())
+    dist_robot.append(distance_traveled.tolist())
+    # print("Poses:", poses)
+    # print("Wij:", wij)
+    # print("CWi:", Cwi)
+    # print("Ui:", ui)
+    # print("Distances traveled:", dist_robot)
 
     # Print the position of the 3rd robot and the weights, this robot has a value of 0.5 for Sensing Quality
     print("Current Pose of 3rd Robot:", current_x[2][0], current_y[2][0])
@@ -171,6 +211,30 @@ for k in range(iterations):
     # Draw the plot
     plt.draw()
     plt.pause(0.1)  # Pause to update the plot
+
+# Outputs the data to a .csv file
+with open("output.csv", mode="w", newline="") as file:
+    writer = csv.writer(file)
+    writer.writerow([f"Number of Iterations: {iterations}"])
+    writer.writerow(["X Poses", "Y Poses"])
+    for index, value in enumerate(poses, start=1):
+        writer.writerow([f"Iteration {index}", value])
+    writer.writerow([])
+    writer.writerow(["Weights"])
+    for index, value in enumerate(wij, start=1):
+        writer.writerow([f"Iteration {index}", value])
+    writer.writerow([])
+    writer.writerow(["Centroids"])
+    for index, value in enumerate(Cwi, start=1):
+        writer.writerow([f"Iteration {index}", value])
+    writer.writerow([])
+    writer.writerow(["Control Inputs"])
+    for index, value in enumerate(ui, start=1):
+        writer.writerow([f"Iteration {index}", value])
+    writer.writerow([])
+    writer.writerow(["Distance Traveled"])
+    for index, value in enumerate(dist_robot, start=1):
+        writer.writerow([f"Iteration {index}", value])
 
 #Call at end of script to print debug information and for your script to run on the Robotarium server properly
 r.call_at_scripts_end()
