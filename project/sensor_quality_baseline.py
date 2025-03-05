@@ -10,14 +10,9 @@ from rps.utilities.barrier_certificates import *
 from rps.utilities.misc import *
 from rps.utilities.controllers import *
 
-# Ignore for now, trying to implement Weighted Voronoi Plotting
-'''from geovoronoi import voronoi_regions_from_coords
-from shapely.geometry import Polygon
-from descartes import PolygonPatch'''
-
 # Simulation Variables
 N = 5                    # Number of robots
-iterations = 100         # How many iterations do we want (about N*0.033 seconds)
+iterations = 1000        # How many iterations do we want (about N*0.033 seconds)
 L = lineGL(N)            # Generated a connected graph Laplacian (for a cylce graph).
 x_min = -1.5             # Upper bound of x coordinate
 x_max = 1.5              # Lower bound of x coordinate
@@ -25,12 +20,26 @@ y_min = -1               # Upper bound of y coordinate
 y_max = 1                # Lower bound of x coordinate
 res = 0.05               # Resolution of coordinates
 
+convergence_threshold = 1e-2         # Threshold to determine if convergence has occurred
+initial_conditions = np.asarray([    # Sets the initial positions of the robots
+    [1.25, 0.25, 0],
+    [1, 0.5, 0],
+    [1, -0.5, 0],
+    [-1, -0.75, 0],
+    [0.1, 0.2, 0],
+    [0.2, -0.6, 0],
+    [-0.75, -0.1, 0],
+    [-1, 0, 0],
+    [-0.8, -0.25, 0],
+    [1.3, -0.4, 0]
+])
+
 # Sensor Quality Variables
+kw = 1              # Constant Gain for weights controller
+k = 1               # Constant Gain for velocity controller
 hi = np.ones(N)     # Sensor quality set to 1 initially for all sensors
 hi[2] = 0.5         # Sensor quality of 3rd robot is 0.5
 wi = np.zeros(N)    # Weights initially set to zero and calculated later
-kw = 1              # Constant Gain for weights controller
-k = 1               # Constant Gain for velocity controller
 
 # Status and Performance Variables
 poses = []
@@ -40,9 +49,11 @@ ui = []
 dist_robot = []
 previous_x = None
 previous_y = None
+previous_Hp = float('inf')
+converged_iteration = -1
 
 # Instantiate Robotarium object
-r = robotarium.Robotarium(number_of_robots=N, show_figure=True, sim_in_real_time=True)
+r = robotarium.Robotarium(number_of_robots=N, sim_in_real_time=True, initial_conditions=initial_conditions[0:N].T)
 
 # We're working in single-integrator dynamics, and we don't want the robots
 # to collide or drive off the testbed.  Thus, we're going to use barrier certificates
@@ -99,10 +110,6 @@ for k in range(iterations):
             # Add to the cost value
             Hp += 0.5 * ((distances[min_index] ** 2) - wi[min_index]) * importance_value
                
-    # Print the cost and the Mass of the the Weighted Voronoi Regions
-    print("Cost:", Hp)
-    print("Mass of Voronoi:", w_vw)
-
     # Create a Voronoi diagram based on the robot positions
     points = np.array([current_x.flatten(), current_y.flatten()]).T
     vor = Voronoi(points)
@@ -181,6 +188,15 @@ for k in range(iterations):
     print("Current Pose of 3rd Robot:", current_x[2][0], current_y[2][0])
     print("Weights:", wi)
 
+    # Print the cost and the Mass of the the Weighted Voronoi Regions
+    print("Cost:", Hp)
+    if abs(previous_Hp - Hp) < convergence_threshold and k > 3:
+        converged_iteration = k + 1
+        print(f"Converged at iteration {converged_iteration} with H_p = {Hp}")
+        break
+    print("Mass of Voronoi:", w_vw)
+    previous_Hp = Hp
+
     # Use the barrier certificate to avoid collisions
     si_velocities = si_barrier_cert(si_velocities, x_si)
 
@@ -215,7 +231,7 @@ for k in range(iterations):
 # Outputs the data to a .csv file
 with open("output.csv", mode="w", newline="") as file:
     writer = csv.writer(file)
-    writer.writerow([f"Number of Iterations: {iterations}"])
+    writer.writerow([f"Number of Iterations: {converged_iteration}"])
     writer.writerow(["X Poses", "Y Poses"])
     for index, value in enumerate(poses, start=1):
         writer.writerow([f"Iteration {index}", value])

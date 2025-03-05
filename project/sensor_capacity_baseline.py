@@ -12,7 +12,7 @@ from rps.utilities.controllers import *
 
 # Simulation Variables
 N = 5                    # Number of robots
-iterations = 100         # How many iterations do we want (about N*0.033 seconds)
+iterations = 1000        # How many iterations do we want (about N*0.033 seconds)
 L = lineGL(N)            # Generated a connected graph Laplacian (for a cylce graph).
 x_min = -1.5             # Upper bound of x coordinate
 x_max = 1.5              # Lower bound of x coordinate
@@ -20,8 +20,22 @@ y_min = -1               # Upper bound of y coordinate
 y_max = 1                # Lower bound of x coordinate
 res = 0.05               # Resolution of coordinates
 
+convergence_threshold = 1e-2         # Threshold to determine if convergence has occurred
+initial_conditions = np.asarray([    # Sets the initial positions of the robots
+    [1.25, 0.25, 0],
+    [1, 0.5, 0],
+    [1, -0.5, 0],
+    [-1, -0.75, 0],
+    [0.1, 0.2, 0],
+    [0.2, -0.6, 0],
+    [-0.75, -0.1, 0],
+    [-1, 0, 0],
+    [-0.8, -0.25, 0],
+    [1.3, -0.4, 0]
+])
+
 # Sensor Capacity Variables
-k = 50                          # Set the gain for the velocity controller
+k = 1                           # Set the gain for the velocity controller
 Rrs1 = np.ones(N)               # Sensor Capacity, set to 1 initially for all sensors
 Rrs1[2] = 0.5                   # Set the Sensor Capacity of Robot 3 to 0.5
 max_range = np.sqrt(((x_max-x_min) ** 2) + ((y_max-y_min) ** 2)) # Calculate the maximum range to cover entire simulation
@@ -34,9 +48,11 @@ ui = []
 dist_robot = []
 previous_x = None
 previous_y = None
+previous_Hr = float('inf')
+converged_iteration = -1
 
 # Instantiate Robotarium object
-r = robotarium.Robotarium(number_of_robots=N, show_figure=True, sim_in_real_time=True)
+r = robotarium.Robotarium(number_of_robots=N, sim_in_real_time=True, initial_conditions=initial_conditions[0:N].T)
 
 # We're working in single-integrator dynamics, and we don't want the robots
 # to collide or drive off the testbed.  Thus, we're going to use barrier certificates
@@ -57,8 +73,6 @@ for k in range(iterations):
     poses.append(x_si.tolist())
     current_x = x_si[0,:,None]
     current_y = x_si[1,:,None]
- 
-    # points = np.zeros(shape=(int((x_max-x_min)/res),int((y_max-y_min)/res)))
 
     # Instantiate calculation variables to zero
     Hr = 0
@@ -103,10 +117,6 @@ for k in range(iterations):
 
                 Hr += (min_distance ** 2) * importance_value
    
-    # Print the cost and the calculated Mass of each Ranged Voronoi Partition
-    print("Cost:", Hr)
-    print("Mass of Ranged Voronoi:", w_vr)
-               
     # Initialize the single-integrator control inputs
     si_velocities = np.zeros((2, N))
 
@@ -128,7 +138,7 @@ for k in range(iterations):
             c_yr = c_vr[robots][1] / w_vr[robots]  
                    
             # Calcualte the velocity of each robot
-            si_velocities[:, robots] = k * np.array([(c_xr - current_x[robots][0]), (c_yr - current_y[robots][0] )])
+            si_velocities[:, robots] = k * np.array([(c_xr - current_x[robots][0]), (c_yr - current_y[robots][0])])
 
             # Append the current centroid and velocity to the lists
             cwi[:, robots] = np.array([c_xr, c_yr])
@@ -154,6 +164,15 @@ for k in range(iterations):
 
     # Print the position of the 3rd robot, this robot has a value of 0.5 for Sensing Capacity
     print("Current Pose of 3rd Robot:", current_x[2][0], current_y[2][0])
+
+    # Print the cost and the calculated Mass of each Ranged Voronoi Partition
+    print("Cost:", Hr)
+    if abs(previous_Hr - Hr) < convergence_threshold and k > 3:
+        converged_iteration = k + 1
+        print(f"Converged at iteration {converged_iteration} with H_p = {Hr}")
+        break
+    print("Mass of Ranged Voronoi:", w_vr)
+    previous_Hr = Hr  
 
     # Use the barrier certificate to avoid collisions
     si_velocities = si_barrier_cert(si_velocities, x_si)
@@ -194,7 +213,7 @@ for k in range(iterations):
 # Outputs the data to a .csv file
 with open("output.csv", mode="w", newline="") as file:
     writer = csv.writer(file)
-    writer.writerow([f"Number of Iterations: {iterations}"])
+    writer.writerow([f"Number of Iterations: {converged_iteration}"])
     writer.writerow(["X Poses", "Y Poses"])
     for index, value in enumerate(poses, start=1):
         writer.writerow([f"Iteration {index}", value])
