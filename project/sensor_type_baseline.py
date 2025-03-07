@@ -37,17 +37,29 @@ initial_conditions = np.asarray([    # Sets the initial positions of the robots
 # Scenario Variables
 kv = 1              # Constant Gain for velocity controller
 kw = 1              # Constant Gain for weights controller
-ns = 2              # Number of sensor types
+kc = 1              # Constant Gain for cost controller
 S = {1}             # Set of sensor types
 N1 = {1,2,3,4,5}    # Set of robots with sensor type 1
 N2 = {}             # Set of robots with sensor type 1
-hi = np.ones(N)     # Sensor quality set to 1 initially for all sensors
-# hi[2] = 0.5         # Sensor quality of 3rd robot is 0.5
+hi1 = [1,1,1,1,1]   # Set sensor health for sensor type 1
+hi2 = []            # Set sensor health for sensor type 2
+v_r = [1,1,1,1,1]   # Velocities set to 1 initially for all robots
+Rrs1 = [1,1,1,1,1]  # Set sensor health for sensor type 1
+Rrs2 = []           # Set sensor health for sensor type 2
+hi = hi1 + hi2      # Calculate overall sensor health array
+Rrs = Rrs1 + Rrs2   # Calculate overall sensor capacity array
 wi = np.zeros(N)    # Weights initially set to zero and calculated later
-v_r = np.ones(N)    # Velocities set to 1 initially for all robots
-Rrs1 = np.ones(N)   # Sensor Capacity, set to 1 initially for all sensors
-# Rrs1[2] = 0.5       # Set the Sensor Capacity of Robot 3 to 0.5
+ci = np.zeros(N)    # Cost Weights initially set to zero and calculated later
+costs = np.zeros(N) # Costs initially set to zero and calculated based on values above
 max_range = np.sqrt(((x_max-x_min) ** 2) + ((y_max-y_min) ** 2)) # Calculate the maximum range to cover entire simulation
+
+# Calculate costs based on various parameters and use later on for the cost weights
+for robot in range(1,N+1):
+    costs[robot-1] = v_r[robot-1]
+    if robot in N1:
+        costs[robot-1] = (1/len(S)) * (hi1[list(N1).index(robot)] + Rrs1[list(N1).index(robot)])
+    if robot in N2:
+        costs[robot-1] = (1/len(S)) * (hi2[list(N2).index(robot)] + Rrs2[list(N2).index(robot)])
 
 # Status and Performance Variables
 poses = []
@@ -59,6 +71,7 @@ total_Hg = []
 total_Hp = []
 total_Hv = []
 total_Hr = []
+total_Hc = []
 previous_x = None
 previous_y = None
 previous_H_g = float('inf')
@@ -88,8 +101,6 @@ for i in range(N):
         assigned_sensors.add(2)
     robot_sensors[i] = assigned_sensors
 
-print(robot_sensors)
-
 # Initialize figure
 fig, ax = plt.subplots()
 
@@ -107,16 +118,18 @@ for k in range(iterations):
     Hp = 0
     Hv = 0
     Hr = 0
+    Hc = 0
     c_v1 = np.zeros((N, 2))
     w_v1 = np.zeros(N)
     c_v2 = np.zeros((N, 2))
     w_v2 = np.zeros(N)
     w_vw = np.zeros(N)
+    w_vc = np.zeros(N)
     cwi = np.zeros((2,N))
     distance_traveled = np.zeros(N)
 
     # Calculate each robot's sensor range
-    ranges = Rrs1 * max_range      
+    ranges = np.array(Rrs) * max_range      
 
     for ix in np.arange(x_min, x_max, res):
         for iy in np.arange(y_min, y_max, res):
@@ -142,6 +155,10 @@ for k in range(iterations):
             velocity_distances = distances.copy()
             velocity_distances = velocity_distances/v_r
 
+            # Subtract the costs from distances for each robot
+            cost_distances = distances.copy()
+            cost_distances -= ci
+
             # Find the robot with the smallest normal and weighted distances
             min_index = np.argmin(distances)
             if distances1:
@@ -156,8 +173,10 @@ for k in range(iterations):
                 w_v2[min_index2] += importance_value
             weighted_min_index = np.argmin(weighted_distances)
             velocity_min_index = np.argmin(velocity_distances)
+            cost_min_index = np.argmin(cost_distances)
             sensor_capacity = ranges[min_index]/2
             w_vw[weighted_min_index] += importance_value
+            w_vc[cost_min_index] += importance_value
 
             # Calculate costs
             for sensor_type in S:
@@ -175,31 +194,36 @@ for k in range(iterations):
                         type_distances.append(current_distance)
                     min_index = np.argmin(type_distances)
                     Hg += (type_distances[min_index] ** 2) * importance_value
-            Hp += 0.5 * ((distances[weighted_min_index] ** 2) - wi[min_index]) * importance_value
+            Hp += 0.5 * ((distances[weighted_min_index] ** 2) - wi[weighted_min_index]) * importance_value
             Hv += ((distances[velocity_min_index]/v_r[velocity_min_index]) ** 2) * importance_value
             if distances[min_index] > sensor_capacity:
                 Hr += (sensor_capacity ** 2) * importance_value
             if distances[min_index] <= sensor_capacity:
                 Hr += (distances[min_index] ** 2) * importance_value
+            Hc += 0.5 * ((distances[cost_min_index] ** 2) - ci[cost_min_index]) * importance_value
 
     print(f"Iteration {k + 1}: H_g = {Hg}")
 
     si_velocities = np.zeros((2, N))
 
-    # Make a copy of the current weights, use this for calculations below
+    # Make a copy of the current weights and costs, use this for calculations below
     weights = wi.copy()
+    cost_weights = ci.copy()
 
     for robots, sensor_types in robot_sensors.items():
 
-        # Instantiate the summation variable to zero
+        # Instantiate the summation variables to zero
         summation = 0
+        cost_summation = 0
 
         # Calculate the summation for the weights controller
         for neighbor in range(N):
             summation += (hi[robots] - weights[robots]) - (hi[neighbor] - weights[neighbor])
+            cost_summation += (costs[robots] - cost_weights[robots]) - (costs[neighbor] - cost_weights[neighbor])
         
         # Calculate the new weights
         wi[robots] += (kw/(2*w_vw[robots])) * summation
+        ci[robots] += (kc/(2*w_vc[robots])) * cost_summation
 
         # Calculate the distance travled from the previous iteration
         if previous_x is not None and previous_y is not None:
@@ -248,6 +272,7 @@ for k in range(iterations):
     total_Hp.append(Hp)
     total_Hv.append(Hv)
     total_Hr.append(Hr)
+    total_Hc.append(Hc)
     # print("Poses:", poses)
     # print("Wij:", wij)
     # print("CWi:", Cwi)
@@ -316,6 +341,10 @@ with open("output1.csv", mode="w", newline="") as file:
     writer.writerow([])
     writer.writerow(["Range-Limited Cost"])
     for index, value in enumerate(total_Hr, start=1):
+        writer.writerow([f"Iteration {index}: {value}"])
+    writer.writerow([])
+    writer.writerow(["Custom Heterogeneous Cost"])
+    for index, value in enumerate(total_Hc, start=1):
         writer.writerow([f"Iteration {index}: {value}"])
     writer.writerow([])
     writer.writerow(["Sensor Type Baseline"])

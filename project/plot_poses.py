@@ -36,7 +36,7 @@ def plot_poses(csv_file):
                 iterations.append(iteration)
 
             # Extract the label
-            elif counter == (9 * total_iterations + 19):
+            elif counter == (10 * total_iterations + 21):
                 label = row[0]
 
             counter += 1
@@ -60,7 +60,7 @@ def plot_poses(csv_file):
 
 def main():
 
-    csv_files = ["output1.csv", "output2.csv", "output3.csv", "output4.csv"]
+    csv_files = ["output.csv", "output1.csv", "output2.csv", "output3.csv", "output4.csv", "output5.csv"]
     for csv_file in csv_files:
         plot_poses(csv_file)
 

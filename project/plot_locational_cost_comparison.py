@@ -2,8 +2,8 @@ import csv
 import matplotlib.pyplot as plt
 
 def plot_locational_cost():
-    # Read data from CSV file
-    csv_files = ["output1.csv", "output2.csv", "output3.csv", "output4.csv"]
+
+    csv_files = ["output.csv", "output1.csv", "output2.csv", "output3.csv", "output4.csv", "output5.csv"]
 
     total_locational_costs = {}
 
@@ -32,7 +32,7 @@ def plot_locational_cost():
                     locational_costs.append(locational_cost)
 
                 # Extract the label
-                elif counter == (9 * total_iterations + 19):
+                elif counter == (10 * total_iterations + 21):
                     label = row[0]
                     if label not in total_locational_costs:
                         total_locational_costs[label] =  {"Costs": [], "Iterations": []}

@@ -1,7 +1,7 @@
 import csv
 import matplotlib.pyplot as plt
 
-def plot_temporal_cost():
+def plot_custom_heterogeneous_cost():
 
     csv_files = ["output.csv", "output1.csv", "output2.csv", "output3.csv", "output4.csv", "output5.csv"]
 
@@ -24,7 +24,7 @@ def plot_temporal_cost():
                     total_iterations = int(row[0].split(':')[1].strip())
 
                 # Extract the locational cost data from the corresponding rows
-                elif (7 * total_iterations + 15) < counter < (8 * total_iterations + 16):
+                elif (9 * total_iterations + 19) < counter < (10 * total_iterations + 20):
                     iteration = int(row[0].split()[1].replace(':', ''))
                     locational_cost = float(row[0].split(':')[1].strip())
                     
@@ -49,15 +49,15 @@ def plot_temporal_cost():
         plt.scatter(data["Iterations"][-1], data["Costs"][-1], marker="o", s=10)
 
     plt.xlabel("Iteration")
-    plt.ylabel("Temporal Cost")
-    plt.title("Temporal Cost")
+    plt.ylabel("Custom Heterogeneous Cost")
+    plt.title("Custom Heterogeneous Cost")
     plt.suptitle("Scenario 1")
     plt.legend()
     plt.grid()
     plt.show()
 
 def main():
-    plot_temporal_cost()
+    plot_custom_heterogeneous_cost()
 
 if __name__ == "__main__":
     main()

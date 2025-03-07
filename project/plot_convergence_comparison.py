@@ -3,7 +3,7 @@ import matplotlib.pyplot as plt
 
 def plot_convergence_comparison():
 
-    csv_files = ["output1.csv", "output2.csv", "output3.csv", "output4.csv"]
+    csv_files = ["output.csv", "output1.csv", "output2.csv", "output3.csv", "output4.csv", "output5.csv"]
 
     convergences = {}
 
@@ -21,7 +21,7 @@ def plot_convergence_comparison():
                     total_iterations = int(row[0].split(':')[1].strip())
 
                 # Extract the label
-                elif counter == (9 * total_iterations + 19):
+                elif counter == (10 * total_iterations + 21):
                     label = row[0]
                     if label not in convergences:
                         convergences[label] =  {"Iteration": int}

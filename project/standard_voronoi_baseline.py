@@ -74,7 +74,7 @@ total_Hr = []
 total_Hc = []
 previous_x = None
 previous_y = None
-previous_Hp = float('inf')
+previous_Hg = float('inf')
 converged_iteration = -1
 
 # Instantiate Robotarium object
@@ -109,14 +109,15 @@ for k in range(iterations):
     Hv = 0
     Hr = 0
     Hc = 0
-    c_vw = np.zeros((N,2))
+    c_v = np.zeros((N,2))
+    w_v = np.zeros(N)
     w_vw = np.zeros(N)
     w_vc = np.zeros(N)
     cwi = np.zeros((2,N))
     distance_traveled = np.zeros(N)
 
     # Calculate each robot's sensor range
-    ranges = np.array(Rrs) * max_range
+    ranges = np.array(Rrs) * max_range        
 
     # Nested loop that occurs for each coordinate, this is the calculation portion of the code for the Voronoi cells
     for ix in np.arange(x_min,x_max,res):
@@ -150,12 +151,13 @@ for k in range(iterations):
             velocity_min_index = np.argmin(velocity_distances)
             cost_min_index = np.argmin(cost_distances)
             sensor_capacity = ranges[min_index]/2
+            w_vw[weighted_min_index] += importance_value
             w_vc[cost_min_index] += importance_value
 
-            # Intermediate calculations for the Weighted Voronoi Partitioning
-            c_vw[weighted_min_index][0] += ix * importance_value
-            c_vw[weighted_min_index][1] += iy * importance_value
-            w_vw[weighted_min_index] += importance_value
+            # Intermediate calculations for the Standard Voronoi Partitioning
+            c_v[min_index][0] += ix * importance_value
+            c_v[min_index][1] += iy * importance_value
+            w_v[min_index] += importance_value
 
             # Calculate costs
             for sensor_type in S:
@@ -195,13 +197,14 @@ for k in range(iterations):
     # Iterate for the number of robots, this is the velocity and weight controller portion of the code
     for robots in range(N):
 
-        # Instantiate the x and y coordinates of the centroids and the summation variable to zero
+        # Instantiate the summation variables to zero
         summation = 0
         cost_summation = 0
 
         # Calculate the summation for the weights controller
         for neighbor in range(N):
             summation += (hi[robots] - weights[robots]) - (hi[neighbor] - weights[neighbor])
+            cost_summation += (costs[robots] - cost_weights[robots]) - (costs[neighbor] - cost_weights[neighbor])
         
         # Calculate the new weights
         wi[robots] += (kw/(2*w_vw[robots])) * summation
@@ -213,9 +216,9 @@ for k in range(iterations):
                                                       (abs(current_y[robots][0] - previous_y[robots][0]) ** 2)))
 
         # Calculate the x and y coordinates of the centroids of the Weighted Voronoi Partitions
-        if not w_vw[robots] == 0:
-            c_x = c_vw[robots][0] / w_vw[robots]
-            c_y = c_vw[robots][1] / w_vw[robots] 
+        if not w_v[robots] == 0:
+            c_x = c_v[robots][0] / w_v[robots]
+            c_y = c_v[robots][1] / w_v[robots] 
 
             # Calcualte the velocity of each robot
             si_velocities[:, robots] = kv * np.array([(c_x - current_x[robots][0]), (c_y - current_y[robots][0])])
@@ -252,13 +255,13 @@ for k in range(iterations):
     print("Weights:", wi)
 
     # Print the cost and the Mass of the the Weighted Voronoi Regions
-    print("Cost:", Hp)
-    if abs(previous_Hp - Hp) < convergence_threshold and k > 3:
+    print("Cost:", Hg)
+    if abs(previous_Hg - Hg) < convergence_threshold and k > 3:
         converged_iteration = k + 1
-        print(f"Converged at iteration {converged_iteration} with H_p = {Hp}")
+        print(f"Converged at iteration {converged_iteration} with H_g = {Hg}")
         break
-    print("Mass of Voronoi:", w_vw)
-    previous_Hp = Hp
+    print("Mass of Voronoi:", w_v)
+    previous_Hg = Hg
 
     # Use the barrier certificate to avoid collisions
     si_velocities = si_barrier_cert(si_velocities, x_si)
@@ -292,7 +295,7 @@ for k in range(iterations):
     plt.pause(0.1)  # Pause to update the plot
 
 # Outputs the data to a .csv file
-with open("output2.csv", mode="w", newline="") as file:
+with open("output.csv", mode="w", newline="") as file:
     writer = csv.writer(file)
     writer.writerow([f"Number of Iterations: {converged_iteration}"])
     writer.writerow(["X Poses", "Y Poses"])
@@ -335,7 +338,7 @@ with open("output2.csv", mode="w", newline="") as file:
     for index, value in enumerate(total_Hc, start=1):
         writer.writerow([f"Iteration {index}: {value}"])
     writer.writerow([])
-    writer.writerow(["Sensor Quality Baseline"])
+    writer.writerow(["Standard Voronoi Baseline"])
 
 #Call at end of script to print debug information and for your script to run on the Robotarium server properly
 r.call_at_scripts_end()
