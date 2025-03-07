@@ -11,18 +11,18 @@ import matplotlib.pyplot as plt
 from scipy.spatial import Voronoi, voronoi_plot_2d
 
 # Instantiate Robotarium object
-N = 5
+N = 2
 initial_conditions = np.asarray([
-    [1.25, 0.25, 0],
-    [1, 0.5, 0],
-    [1, -0.5, 0],
+    # [1.25, 0.25, 0],
+    # [1, 0.5, 0],
+    # [1, -0.5, 0],
     [-1, -0.75, 0],
     [0.1, 0.2, 0],
-    [0.2, -0.6, 0],
-    [-0.75, -0.1, 0],
-    [-1, 0, 0],
-    [-0.8, -0.25, 0],
-    [1.3, -0.4, 0]
+    # [0.2, -0.6, 0],
+    # [-0.75, -0.1, 0],
+    # [-1, 0, 0],
+    # [-0.8, -0.25, 0],
+    # [1.3, -0.4, 0]
 ])
 
 r = robotarium.Robotarium(number_of_robots=N, sim_in_real_time=True, initial_conditions=initial_conditions[0:N].T)

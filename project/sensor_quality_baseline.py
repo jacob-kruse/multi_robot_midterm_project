@@ -34,12 +34,20 @@ initial_conditions = np.asarray([    # Sets the initial positions of the robots
     [1.3, -0.4, 0]
 ])
 
-# Sensor Quality Variables
+# Scenario Variables
+kv = 1              # Constant Gain for velocity controller
 kw = 1              # Constant Gain for weights controller
-k = 1               # Constant Gain for velocity controller
+ns = 2              # Number of sensor types
+S = {1}             # Set of sensor types
+N1 = {1,2,3,4,5}    # Set of robots with sensor type 1
+N2 = {}             # Set of robots with sensor type 1
 hi = np.ones(N)     # Sensor quality set to 1 initially for all sensors
-hi[2] = 0.5         # Sensor quality of 3rd robot is 0.5
+# hi[2] = 0.5         # Sensor quality of 3rd robot is 0.5
 wi = np.zeros(N)    # Weights initially set to zero and calculated later
+v_r = np.ones(N)    # Velocities set to 1 initially for all robots
+Rrs1 = np.ones(N)   # Sensor Capacity, set to 1 initially for all sensors
+# Rrs1[2] = 0.5       # Set the Sensor Capacity of Robot 3 to 0.5
+max_range = np.sqrt(((x_max-x_min) ** 2) + ((y_max-y_min) ** 2)) # Calculate the maximum range to cover entire simulation
 
 # Status and Performance Variables
 poses = []
@@ -47,6 +55,10 @@ wij = []
 Cwi = []
 ui = []
 dist_robot = []
+total_Hg = []
+total_Hp = []
+total_Hv = []
+total_Hr = []
 previous_x = None
 previous_y = None
 previous_Hp = float('inf')
@@ -55,16 +67,20 @@ converged_iteration = -1
 # Instantiate Robotarium object
 r = robotarium.Robotarium(number_of_robots=N, sim_in_real_time=True, initial_conditions=initial_conditions[0:N].T)
 
-# We're working in single-integrator dynamics, and we don't want the robots
-# to collide or drive off the testbed.  Thus, we're going to use barrier certificates
-si_barrier_cert = create_single_integrator_barrier_certificate_with_boundary()
+def get_sensor():
+    """
+    Function to return the sensor density measurement at a given location q.
+    Currently returns a constant value of 1 (uniform distribution).
+    """
+    return 1
 
-# Create SI to UNI dynamics tranformation
+si_barrier_cert = create_single_integrator_barrier_certificate_with_boundary()
 si_to_uni_dyn, uni_to_si_states = create_si_to_uni_mapping()
 
 # Initialize figure
 fig, ax = plt.subplots()
 
+# Iterate for the amount defined
 for k in range(iterations):
 
     # Get the poses of the robots and convert to single-integrator poses
@@ -75,11 +91,17 @@ for k in range(iterations):
     current_y = x_si[1,:,None]
 
     # Instantiate calculation variables to zero
+    Hg = 0
+    Hp = 0
+    Hv = 0
+    Hr = 0
     c_vw = np.zeros((N,2))
     w_vw = np.zeros(N)
     cwi = np.zeros((2,N))
     distance_traveled = np.zeros(N)
-    Hp = 0
+
+    # Calculate each robot's sensor range
+    ranges = Rrs1 * max_range      
 
     # Nested loop that occurs for each coordinate, this is the calculation portion of the code for the Voronoi cells
     for ix in np.arange(x_min,x_max,res):
@@ -99,33 +121,50 @@ for k in range(iterations):
             weighted_distances = distances.copy()
             weighted_distances -= wi
 
-            # Find the robot with the smallest weighted distance
-            min_index = np.argmin(weighted_distances)
+            # Divide the velocities from distances for each robot
+            velocity_distances = distances.copy()
+            velocity_distances = velocity_distances/v_r
 
-            # Intermeditae calculations for the Weighted Voronoi Partitioning
-            c_vw[min_index][0] += ix * importance_value
-            c_vw[min_index][1] += iy * importance_value
-            w_vw[min_index] += importance_value
+            # Find the robot with the smallest normal and weighted distances
+            min_index = np.argmin(distances)
+            weighted_min_index = np.argmin(weighted_distances)
+            velocity_min_index = np.argmin(velocity_distances)
+            sensor_capacity = ranges[min_index]/2
 
-            # Add to the cost value
-            Hp += 0.5 * ((distances[min_index] ** 2) - wi[min_index]) * importance_value
-               
+            # Intermediate calculations for the Weighted Voronoi Partitioning
+            c_vw[weighted_min_index][0] += ix * importance_value
+            c_vw[weighted_min_index][1] += iy * importance_value
+            w_vw[weighted_min_index] += importance_value
+
+            # Calculate costs
+            for sensor_type in S:
+                if sensor_type == 1:
+                    type_distances = []
+                    for robot in N1:
+                        current_distance = np.sqrt(np.square(ix - current_x[robot-1]) + np.square(iy - current_y[robot-1]))
+                        type_distances.append(current_distance)
+                    min_index = np.argmin(type_distances)
+                    Hg += (type_distances[min_index] ** 2) * importance_value
+                elif sensor_type == 2:
+                    type_distances = []
+                    for robot in N2:
+                        current_distance = np.sqrt(np.square(ix - current_x[robot-1]) + np.square(iy - current_y[robot-1]))
+                        type_distances.append(current_distance)
+                    min_index = np.argmin(type_distances)
+                    Hg += (type_distances[min_index] ** 2) * importance_value
+            Hp += 0.5 * ((distances[weighted_min_index] ** 2) - wi[min_index]) * importance_value
+            Hv += ((distances[velocity_min_index]/v_r[velocity_min_index]) ** 2) * importance_value
+            if distances[min_index] > sensor_capacity:
+                Hr += (sensor_capacity ** 2) * importance_value
+            if distances[min_index] <= sensor_capacity:
+                Hr += (distances[min_index] ** 2) * importance_value   
+
     # Create a Voronoi diagram based on the robot positions
     points = np.array([current_x.flatten(), current_y.flatten()]).T
     vor = Voronoi(points)
 
     # Initialize the single-integrator control inputs
     si_velocities = np.zeros((2, N))
-     
-    neighbors = {i: set() for i in range(len(points))}
-
-    # Extract neighbors from ridge points
-    for p1, p2 in vor.ridge_points:
-        neighbors[p1].add(p2)
-        neighbors[p2].add(p1)
-
-    # Convert sets to lists for easier use
-    neighbors = {key: list(val) for key, val in neighbors.items()}
 
     # Make a copy of the current weights, use this for calculations below
     weights = wi.copy()
@@ -137,10 +176,6 @@ for k in range(iterations):
         c_x = 0
         c_y = 0
         summation = 0
-
-        # Calculate weights based on sensor quality
-        # for neighbor in neighbors[robots]:
-        #     summation += hi[robots] - hi[int(neighbor)]
 
         # Calculate the summation for the weights controller
         for neighbor in range(N):
@@ -160,7 +195,7 @@ for k in range(iterations):
             c_y = c_vw[robots][1] / w_vw[robots] 
 
             # Calcualte the velocity of each robot
-            si_velocities[:, robots] = k * np.array([(c_x - current_x[robots][0]), (c_y - current_y[robots][0])])
+            si_velocities[:, robots] = kv * np.array([(c_x - current_x[robots][0]), (c_y - current_y[robots][0])])
 
             # Append the current centroid and velocity to the lists
             cwi[:, robots] = np.array([c_x, c_y])
@@ -178,6 +213,10 @@ for k in range(iterations):
     Cwi.append(cwi.tolist())
     ui.append(si_velocities.tolist())
     dist_robot.append(distance_traveled.tolist())
+    total_Hg.append(Hg[0])
+    total_Hp.append(Hp)
+    total_Hv.append(Hv)
+    total_Hr.append(Hr)
     # print("Poses:", poses)
     # print("Wij:", wij)
     # print("CWi:", Cwi)
@@ -229,7 +268,7 @@ for k in range(iterations):
     plt.pause(0.1)  # Pause to update the plot
 
 # Outputs the data to a .csv file
-with open("output.csv", mode="w", newline="") as file:
+with open("output2.csv", mode="w", newline="") as file:
     writer = csv.writer(file)
     writer.writerow([f"Number of Iterations: {converged_iteration}"])
     writer.writerow(["X Poses", "Y Poses"])
@@ -251,6 +290,24 @@ with open("output.csv", mode="w", newline="") as file:
     writer.writerow(["Distance Traveled"])
     for index, value in enumerate(dist_robot, start=1):
         writer.writerow([f"Iteration {index}", value])
+    writer.writerow([])
+    writer.writerow(["Locational Cost for all Sensor Types"])
+    for index, value in enumerate(total_Hg, start=1):
+        writer.writerow([f"Iteration {index}: {value}"])
+    writer.writerow([])
+    writer.writerow(["Power Cost"])
+    for index, value in enumerate(total_Hp, start=1):
+        writer.writerow([f"Iteration {index}: {value}"])
+    writer.writerow([])
+    writer.writerow(["Temporal Cost"])
+    for index, value in enumerate(total_Hv, start=1):
+        writer.writerow([f"Iteration {index}: {value}"])
+    writer.writerow([])
+    writer.writerow(["Range-Limited Cost"])
+    for index, value in enumerate(total_Hr, start=1):
+        writer.writerow([f"Iteration {index}: {value}"])
+    writer.writerow([])
+    writer.writerow(["Sensor Quality Baseline"])
 
 #Call at end of script to print debug information and for your script to run on the Robotarium server properly
 r.call_at_scripts_end()

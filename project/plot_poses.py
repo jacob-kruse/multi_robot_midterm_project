@@ -2,12 +2,11 @@ import csv
 import ast
 import matplotlib.pyplot as plt
 
-def plot_poses():
-    # Read data from CSV file
-    csv_file = "output.csv"  # Update with your actual file name
+def plot_poses(csv_file):
 
     iterations = []
     robot_centroids = {}
+    label = None
 
     with open(csv_file, "r") as file:
         reader = csv.reader(file)
@@ -21,7 +20,7 @@ def plot_poses():
                 total_iterations = int(row[0].split(':')[1].strip())
 
             # Extract the pose data from the corresponding rows
-            if 1 < counter < (total_iterations + 2):
+            elif 1 < counter < (total_iterations + 2):
                 iteration = int(row[0].split()[1])  # Extract iteration number
                 positions = ast.literal_eval(row[1])  # Convert string to list
 
@@ -35,6 +34,10 @@ def plot_poses():
                     robot_centroids[i]["y"].append(y_positions[i])
 
                 iterations.append(iteration)
+
+            # Extract the label
+            elif counter == (9 * total_iterations + 19):
+                label = row[0]
 
             counter += 1
 
@@ -50,12 +53,16 @@ def plot_poses():
     plt.xlim(-1.5, 1.5)
     plt.ylim(-1.0, 1.0)
     plt.title("Robot Poses Over Time")
+    plt.suptitle(f"Scenario 1 - {label}")
     plt.legend()
     plt.grid()
     plt.show()
 
 def main():
-    plot_poses()
+
+    csv_files = ["output1.csv", "output2.csv", "output3.csv", "output4.csv"]
+    for csv_file in csv_files:
+        plot_poses(csv_file)
 
 if __name__ == "__main__":
     main()
