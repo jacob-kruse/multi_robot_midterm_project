@@ -13,10 +13,14 @@ from plot_custom_heterogeneous_cost_comparison import plot_custom_heterogeneous_
 csv_files = ["output.csv", "output1.csv", "output2.csv", "output3.csv", "output4.csv", "output5.csv"]
 for csv_file in csv_files:
     plot_poses(csv_file)
-plot_weights()
-plot_centroids()
-plot_velocities()
-plot_distances()
+# for csv_file in csv_files:
+#     plot_weights(csv_file)
+# for csv_file in csv_files:
+#     plot_centroids(csv_file)
+# for csv_file in csv_files:
+#     plot_velocities(csv_file)
+# for csv_file in csv_files:
+#     plot_distances(csv_file)
 plot_locational_cost()
 plot_power_cost()
 plot_temporal_cost()

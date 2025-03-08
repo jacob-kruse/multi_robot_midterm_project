@@ -2,9 +2,7 @@ import csv
 import ast
 import matplotlib.pyplot as plt
 
-def plot_centroids():
-    # Read data from CSV file
-    csv_file = "output.csv"  # Update with your actual file name
+def plot_centroids(csv_file):
 
     iterations = []
     robot_positions = {}
@@ -36,6 +34,10 @@ def plot_centroids():
 
                 iterations.append(iteration)
 
+            # Extract the label
+            elif counter == (10 * total_iterations + 21):
+                label = row[0]
+
             counter += 1
 
     # Plot robot positions over iterations
@@ -50,12 +52,16 @@ def plot_centroids():
     plt.xlim(-1.5, 1.5)
     plt.ylim(-1.0, 1.0)
     plt.title("Robot Centroids Over Time")
+    plt.suptitle(f"Scenario 1 - {label}")
     plt.legend()
     plt.grid()
     plt.show()
 
 def main():
-    plot_centroids()
+
+    csv_files = ["output.csv", "output1.csv", "output2.csv", "output3.csv", "output4.csv", "output5.csv"]
+    for csv_file in csv_files:
+        plot_centroids(csv_file)
 
 if __name__ == "__main__":
     main()

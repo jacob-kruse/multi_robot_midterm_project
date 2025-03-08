@@ -2,9 +2,7 @@ import csv
 import ast
 import matplotlib.pyplot as plt
 
-def plot_distances():
-    # Read data from CSV file
-    csv_file = "output.csv"  # Update with your actual file name
+def plot_distances(csv_file):
 
     iterations = []
     robot_distances = {i: [] for i in range(5)}
@@ -30,6 +28,10 @@ def plot_distances():
 
                 iterations.append(iteration)
 
+            # Extract the label
+            elif counter == (10 * total_iterations + 21):
+                label = row[0]
+
             counter += 1
 
     # Plot robot positions over iterations
@@ -41,12 +43,16 @@ def plot_distances():
     plt.xlabel("Iteration")
     plt.ylabel("Distance Traveled (m)")
     plt.title("Total Distance Traveled")
+    plt.suptitle(f"Scenario 1 - {label}")
     plt.legend()
     plt.grid()
     plt.show()
 
 def main():
-    plot_distances()
+
+    csv_files = ["output.csv", "output1.csv", "output2.csv", "output3.csv", "output4.csv", "output5.csv"]
+    for csv_file in csv_files:
+        plot_distances(csv_file)
 
 if __name__ == "__main__":
     main()

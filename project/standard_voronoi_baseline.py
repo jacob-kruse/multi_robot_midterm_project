@@ -20,7 +20,7 @@ y_min = -1               # Upper bound of y coordinate
 y_max = 1                # Lower bound of x coordinate
 res = 0.05               # Resolution of coordinates
 
-convergence_threshold = 1e-1         # Threshold to determine if convergence has occurred
+convergence_threshold = 2e-3         # Threshold to determine if convergence has occurred
 initial_conditions = np.asarray([    # Sets the initial positions of the robots
     [1.25, 0.25, 0],
     [1, 0.5, 0],
@@ -74,19 +74,12 @@ total_Hr = []
 total_Hc = []
 previous_x = None
 previous_y = None
-previous_Hg = float('inf')
 converged_iteration = -1
 
 # Instantiate Robotarium object
 r = robotarium.Robotarium(number_of_robots=N, sim_in_real_time=True, initial_conditions=initial_conditions[0:N].T)
 
-def get_sensor():
-    """
-    Function to return the sensor density measurement at a given location q.
-    Currently returns a constant value of 1 (uniform distribution).
-    """
-    return 1
-
+# Helper Functions for Simulation
 si_barrier_cert = create_single_integrator_barrier_certificate_with_boundary()
 si_to_uni_dyn, uni_to_si_states = create_si_to_uni_mapping()
 
@@ -226,9 +219,12 @@ for k in range(iterations):
             # Append the current centroid and velocity to the lists
             cwi[:, robots] = np.array([c_x, c_y])
 
+    # Make a copy of distance traveled array to calculate total distances
+    total_distances = distance_traveled.copy()
+
     # If there is a value in the distance array, add the latest calculated distance to the previous iteration
     if dist_robot:
-        distance_traveled += dist_robot[-1]
+        total_distances += dist_robot[-1]
 
     # Update the variables for the previous pose with the current pose to be used in the next calculation
     previous_x = current_x
@@ -238,30 +234,18 @@ for k in range(iterations):
     wij.append(wi.tolist())
     Cwi.append(cwi.tolist())
     ui.append(si_velocities.tolist())
-    dist_robot.append(distance_traveled.tolist())
+    dist_robot.append(total_distances.tolist())
     total_Hg.append(Hg[0])
     total_Hp.append(Hp)
     total_Hv.append(Hv)
     total_Hr.append(Hr)
     total_Hc.append(Hc)
-    # print("Poses:", poses)
-    # print("Wij:", wij)
-    # print("CWi:", Cwi)
-    # print("Ui:", ui)
-    # print("Distances traveled:", dist_robot)
 
-    # Print the position of the 3rd robot and the weights, this robot has a value of 0.5 for Sensing Quality
-    print("Current Pose of 3rd Robot:", current_x[2][0], current_y[2][0])
-    print("Weights:", wi)
-
-    # Print the cost and the Mass of the the Weighted Voronoi Regions
-    print("Cost:", Hg)
-    if abs(previous_Hg - Hg) < convergence_threshold and k > 3:
+    # Check for convergence
+    if np.all(distance_traveled < convergence_threshold) and k > 3:
         converged_iteration = k + 1
-        print(f"Converged at iteration {converged_iteration} with H_g = {Hg}")
+        print(f"Converged at iteration {converged_iteration}")
         break
-    print("Mass of Voronoi:", w_v)
-    previous_Hg = Hg
 
     # Use the barrier certificate to avoid collisions
     si_velocities = si_barrier_cert(si_velocities, x_si)

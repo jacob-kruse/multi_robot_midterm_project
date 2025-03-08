@@ -23,7 +23,7 @@ y_min = -1               # Upper bound of y coordinate
 y_max = 1                # Lower bound of x coordinate
 res = 0.05               # Resolution of coordinates
 
-convergence_threshold = 1e-3         # Threshold to determine if convergence has occurred
+convergence_threshold = 2e-3         # Threshold to determine if convergence has occurred
 initial_conditions = np.asarray([    # Sets the initial positions of the robots
     [1.25, 0.25, 0],
     [1, 0.5, 0],
@@ -38,41 +38,28 @@ initial_conditions = np.asarray([    # Sets the initial positions of the robots
 ])
 
 # Scenario Variables
-kv = 1              # Constant Gain for velocity controller
-kw = 1              # Constant Gain for weights controller (Only used for Power Cost Calculation)
-kc = 1              # Constant Gain for our algorithms cost weighted controller
-w_v = 1             # Weight for velocity cost
-w_h = 1             # Weight for sensor quality cost
-w_r = 1             # Weight for sensor capacity cost 
-S = {1}             # Set of sensor types
-N1 = {1,2,3,4,5}    # Set of robots with sensor type 1
-N2 = {}             # Set of robots with sensor type 1
-hi1 = [1,1,1,1,1]   # Set sensor health for sensor type 1
-hi2 = []            # Set sensor health for sensor type 2
-v_r = [1,1,1,1,1]   # Velocities set to 1 initially for all robots
-Rrs1 = [1,1,1,1,1]  # Set sensor health for sensor type 1
-Rrs2 = []           # Set sensor health for sensor type 2
-hi = hi1 + hi2      # Calculate overall sensor health array
-Rrs = Rrs1 + Rrs2   # Calculate overall sensor capacity array
-wi = np.zeros(N)    # Weights initially set to zero and calculated later
-ci = np.zeros(N)    # Cost Weights initially set to zero and calculated later
-c = np.zeros(N)     # Costs initially set to zero and calculated based on values above
+kv = 1               # Constant Gain for velocity controller
+kw = 1               # Constant Gain for weights controller (Only used for Power Cost Calculation)
+kc = 1               # Constant Gain for our algorithms cost weighted controller
+w_v = 1              # Weight for velocity cost
+w_h = 1              # Weight for sensor quality cost
+w_r = 1              # Weight for sensor capacity cost
+alpha = 0.1          # Adaptive weight update rate
+curve_factor = 0.01  # Factor to add to the curvature to the movement
+S = {1}              # Set of sensor types
+N1 = {1,2,3,4,5}     # Set of robots with sensor type 1
+N2 = {}              # Set of robots with sensor type 1
+hi1 = [1,1,1,1,1]    # Set sensor health for sensor type 1
+hi2 = []             # Set sensor health for sensor type 2
+v_r = [1,1,1,1,1]    # Velocities set to 1 initially for all robots
+Rrs1 = [1,1,1,1,1]   # Set sensor health for sensor type 1
+Rrs2 = []            # Set sensor health for sensor type 2
+hi = hi1 + hi2       # Calculate overall sensor health array
+Rrs = Rrs1 + Rrs2    # Calculate overall sensor capacity array
+wi = np.zeros(N)     # Weights initially set to zero and calculated later (Only used for Power Cost Calculation)
+weights= np.zeros(N) # Cost Weights initially set to zero and calculated later
+costs = np.zeros(N)  # Costs initially set to zero and calculated based on values above
 max_range = np.sqrt(((x_max-x_min) ** 2) + ((y_max-y_min) ** 2)) # Calculate the maximum range to cover entire simulation
-
-# Calculate costs based on various parameters and use later on for the cost weights
-for robot in range(1,N+1):
-    c[robot-1] = v_r[robot-1]
-    if robot in N1:
-        c[robot-1] = (1/len(S)) * (hi1[list(N1).index(robot)] + Rrs1[list(N1).index(robot)])
-    if robot in N2:
-        c[robot-1] = (1/len(S)) * (hi2[list(N2).index(robot)] + Rrs2[list(N2).index(robot)])
-
-# Robot position tracking
-previous_centroids = np.zeros((N, 2))
-weights = np.ones(N)  # Initialize uniform weights
-costs = np.zeros(N)
-alpha = 0.1  # Adaptive weight update rate
-curvature_factor = 0.01  # Factor to add curvature to the movement
 
 # Status and Performance Variables
 poses = []
@@ -87,7 +74,6 @@ total_Hr = []
 total_Hc = []
 previous_x = None
 previous_y = None
-previous_Hp = float('inf')
 converged_iteration = -1
 
 # Instantiate Robotarium object
@@ -98,7 +84,6 @@ si_barrier_cert = create_single_integrator_barrier_certificate_with_boundary()
 si_to_uni_dyn, uni_to_si_states = create_si_to_uni_mapping()
 
 # Visualization setup
-# plt.ion()
 fig, ax = plt.subplots()
 
 def compute_cost(i):
@@ -106,8 +91,6 @@ def compute_cost(i):
     Function to compute the cost of the robot based on the predefined sensor qualities,
     velocities, sensor capacities, and their corresponding weights
     """
-    global w_v,w_r,w_h
-
     # Calculate the velocity cost
     velocity_cost = v_r[i - 1] * w_v
 
@@ -131,12 +114,6 @@ def compute_cost(i):
     # Calculate the total cost
     total_cost = velocity_cost + sensor_cost
 
-    # Increase the weight priorities
-    # if np.any(velocity_cost < 1.0):
-    #     w_h += 0.1
-    # elif (sensor_cost < 2.0/len(S)):
-    #     w_v += 0.1
-
     return total_cost
 
 def adaptive_weight_update(N, weights, costs, alpha=0.1, damping_factor=0.1, weight_limit=(0.1, 10)):
@@ -154,31 +131,50 @@ def adaptive_weight_update(N, weights, costs, alpha=0.1, damping_factor=0.1, wei
     Returns:
     - weights (list or array): Updated weights for all robots
     """
-    for i in range(N):
-        # Calculate the difference in cost for robot i from other robots
-        weight_diff = np.mean(costs) - costs[i]
+    for robot in range(N):
+
+        # Instantiate the summation variable to zero for the next calculation
+        summation = 0
+
+        # Calculate the summation for the weights by comparing the cost of the current robot to all of the others
+        for neighbor in range(N):
+            summation += (costs[robot] - weights[robot]) - (costs[neighbor] - weights[neighbor])
         
-        # Update the weight based on the cost difference
-        weight_update = alpha * weight_diff
+        # Calculate the weights
+        weights[robot] = (kc/(2*w_vw[robot])) * summation
+
+        # # Calculate the weight diff
+        # weight_diff = summation
         
-        # Adjust weight dynamically during decision-making
-        # If cost is high, prioritize improving that robot's performance
-        if costs[i] > 1.0:  # Example: If cost is high, decrease weight to prioritize improvement
-            weights[i] -= weight_update * 0.5  # Penalize robots with high cost slightly
-        else:
-            weights[i] += weight_update * 0.5  # Reward robots with lower cost
+        # # Update the weight based on the cost difference
+        # weight_update = alpha * weight_diff
         
-        # Apply damping factor to avoid drastic changes in weights
-        weights[i] += weight_update * damping_factor
+        # # Adjust weight dynamically during decision-making
+        # # If cost is high, prioritize improving that robot's performance
+        # if costs[i] > 1.0:  # Example: If cost is high, decrease weight to prioritize improvement
+        #     weights[i] -= weight_update * 0.5  # Penalize robots with high cost slightly
+        # else:
+        #     weights[i] += weight_update * 0.5  # Reward robots with lower cost
         
-        # Ensure weights stay within a reasonable range
-        weights[i] = max(weight_limit[0], min(weight_limit[1], weights[i]))  # Enforce min and max limits
+        # # Apply damping factor to avoid drastic changes in weights
+        # weights[i] += weight_update * damping_factor
         
-        # Penalize overperforming robots (adaptive nature)
-        if weights[i] > 5:  # Example threshold for re-adjustment, can be changed
-            weights[i] -= 0.1  # Slight reduction for robots performing too well, to balance task distribution
+        # # Ensure weights stay within a reasonable range
+        # weights[i] = max(weight_limit[0], min(weight_limit[1], weights[i]))  # Enforce min and max limits
+        
+        # # Penalize overperforming robots (adaptive nature)
+        # if weights[i] > 5:  # Example threshold for re-adjustment, can be changed
+        #     weights[i] -= 0.1  # Slight reduction for robots performing too well, to balance task distribution
     
+    print("Weights:", weights)
+
     return weights
+
+# Compute cost  for each robot
+for i in range(1, N + 1):
+    costs[i - 1] = compute_cost(i)
+
+print(f"Computed Costs: {costs}")
 
 # Iteration loop
 for k in range(iterations):
@@ -198,6 +194,8 @@ for k in range(iterations):
     w_vc = np.zeros(N)
     w_vw = np.zeros(N)
     cwi = np.zeros((2,N))
+    si_velocities = np.zeros((2,N))
+    new_centroids = np.zeros((N,2))
     distance_traveled = np.zeros(N)
 
     # Calculate each robot's sensor range
@@ -261,11 +259,7 @@ for k in range(iterations):
                 Hr += (sensor_capacity ** 2) * importance_value
             if distances[min_index] <= sensor_capacity:
                 Hr += (distances[min_index] ** 2) * importance_value
-            Hc += 0.5 * ((distances[cost_weighted_min_index] ** 2) - ci[cost_weighted_min_index]) * importance_value
-
-    # Initialize variables for next iteration
-    si_velocities = np.zeros((2,N))
-    new_centroids = np.zeros((N,2))
+            Hc += 0.5 * ((distances[cost_weighted_min_index] ** 2) - weights[cost_weighted_min_index]) * importance_value
 
     # Make a copy of the current weights (Only used for Power Cost Calculation)
     wi_copy = wi.copy()
@@ -273,7 +267,7 @@ for k in range(iterations):
     # Iterate for the number of robots, this is the velocity and weight controller portion of the code
     for robot in range(N):
 
-        # Instantiate the summation variable to zero for the next calculations
+        # Instantiate the summation variable to zero for the next calculations (Only used for Power Cost Calculation)
         summation = 0
 
         # Calculate the summation for the weights (Only used for Power Cost Calculation)
@@ -290,40 +284,41 @@ for k in range(iterations):
 
         if w_vc[robot] != 0:
 
-            # Calculate the new centroids 
+            # Calculate the new centroids
             new_centroids[robot] = c_vc[robot] / w_vc[robot]
 
             # Apply curvature by modifying the velocity direction slightly
             direction_to_target = np.array([new_centroids[robot][0] - current_x[robot, 0], 
                                            new_centroids[robot][1] - current_y[robot, 0]])
             norm_direction = np.linalg.norm(direction_to_target)
-            curvature_adjustment = curvature_factor * np.array([-direction_to_target[1], direction_to_target[0]])  # Perpendicular vector for curved motion
+            curvature_adjustment = curve_factor * np.array([-direction_to_target[1], direction_to_target[0]])  # Perpendicular vector for curved motion
             
             # Calcualte the velocities of each robot
-            si_velocities[:, robot] = kv * (direction_to_target + curvature_adjustment / norm_direction) * weights[robot]   # Apply dynamic weight to velocity
+            si_velocities[:, robot] = kv * (direction_to_target + curvature_adjustment / norm_direction)
+            # si_velocities[:, robot] = kv * (direction_to_target)
 
-    # Compute costs for each robot
-    costs = np.zeros(N)
-    for i in range(1, N + 1):
-        costs[i - 1] = compute_cost(i)
-    print(f"Iteration {k+1} - Computed Costs: {costs}")
+            # Append the current centroid and velocity to the lists
+            cwi[:, robot] = np.array(new_centroids[robot])
 
-    # Call adaptive weight update after costs are calculated
+    # Call adaptive weight update
     weights = adaptive_weight_update(N, weights, costs)
-    
-    # If there is a value in the distance array, add the latest calculated distance to the previous iteration
+
+    # Make a copy of distance traveled array to calculate total distances
+    total_distances = distance_traveled.copy()
+
+    # If there is a value in the dist array, add the latest calculated distance to the previous iteration
     if dist_robot:
-        distance_traveled += dist_robot[-1]
+        total_distances += dist_robot[-1]
 
     # Update the variables for the previous pose with the current pose to be used in the next calculation
     previous_x = current_x
     previous_y = current_y
 
     # Add the current iteration values to the global lists 
-    wij.append(wi.tolist())
+    wij.append(weights.tolist())
     Cwi.append(cwi.tolist())
     ui.append(si_velocities.tolist())
-    dist_robot.append(distance_traveled.tolist())
+    dist_robot.append(total_distances.tolist())
     total_Hg.append(Hg[0])
     total_Hp.append(Hp)
     total_Hv.append(Hv)
@@ -331,14 +326,10 @@ for k in range(iterations):
     total_Hc.append(Hc)
 
     # Check for convergence
-    movement = np.linalg.norm(new_centroids - previous_centroids, axis=1)
-    if np.all(movement < convergence_threshold):
+    if np.all(distance_traveled < convergence_threshold) and k > 3:
         converged_iteration = k + 1
         print(f"Converged at iteration {converged_iteration}")
         break
-    
-    # Update the variable for the previous centroid with the current centroid for the next calculation
-    previous_centroids = np.copy(new_centroids)
 
     # Transform and assign the velocities, then iterate the simulation
     dxu = si_to_uni_dyn(si_velocities, x)
@@ -407,8 +398,5 @@ with open("output5.csv", mode="w", newline="") as file:
         writer.writerow([f"Iteration {index}: {value}"])
     writer.writerow([])
     writer.writerow(["Proposed Algorithm"])
-
-# plt.ioff()
-# plt.show()
 
 r.call_at_scripts_end()

@@ -83,62 +83,48 @@ r = robotarium.Robotarium(number_of_robots=N, sim_in_real_time=True, initial_con
 si_barrier_cert = create_single_integrator_barrier_certificate_with_boundary()
 si_to_uni_dyn, uni_to_si_states = create_si_to_uni_mapping()
 
-robot_sensors = {}
-
-for i in range(N):
-    robot_index = i + 1  
-    assigned_sensors = set()
-    if robot_index in N1:
-        assigned_sensors.add(1)
-    if robot_index in N2:
-        assigned_sensors.add(2)
-    robot_sensors[i] = assigned_sensors
-
 # Initialize figure
 fig, ax = plt.subplots()
 
+# Iterate for the amount defined
 for k in range(iterations):
 
-    # Get the poses snd convert
+    # Get the poses of the robots and convert to single-integrator poses
     x = r.get_poses()
     x_si = uni_to_si_states(x)
     poses.append(x_si.tolist())
     current_x = x_si[0,:,None]
     current_y = x_si[1,:,None]
 
-    # Instantiate calculation variable to zero
+    # Instantiate calculation variables to zero
     Hg = 0
     Hp = 0
     Hv = 0
     Hr = 0
     Hc = 0
-    c_v1 = np.zeros((N, 2))
-    w_v1 = np.zeros(N)
-    c_v2 = np.zeros((N, 2))
-    w_v2 = np.zeros(N)
+    c_vr = np.zeros((N,2))
+    w_vr = np.zeros(N)
     w_vw = np.zeros(N)
     w_vc = np.zeros(N)
     cwi = np.zeros((2,N))
     distance_traveled = np.zeros(N)
 
     # Calculate each robot's sensor range
-    ranges = np.array(Rrs) * max_range      
+    ranges = np.array(Rrs) * max_range     
 
-    for ix in np.arange(x_min, x_max, res):
-        for iy in np.arange(y_min, y_max, res):
+    # Nested loop that occurs for each coordinate, this is the calculation portion of the code for the Voronoi cells
+    for ix in np.arange(x_min,x_max,res):
+        for iy in np.arange(y_min,y_max,res):
+
+            # Set the importance value to 1, this represents the distribution function
             importance_value = 1
+
+            # Instantiate the distance array to zero for all values
             distances = np.zeros(N)
-            distances1 = []
-            distances2 = []
+
+            # Calculate the distance of each robot to the current point
             for robots in range(N):
                 distances[robots] = np.sqrt(np.square(ix - current_x[robots]) + np.square(iy - current_y[robots]))
-            for robot, sensor_types in robot_sensors.items():
-                if 1 in sensor_types:
-                    dist1 = np.sqrt(np.square(ix - current_x[robot]) + np.square(iy - current_y[robot]))
-                    distances1.append(dist1)
-                if 2 in sensor_types:
-                    dist2 = np.sqrt(np.square(ix - current_x[robot]) + np.square(iy - current_y[robot]))
-                    distances2.append(dist2)
 
             # Subtract the weights from distances for each robot
             weighted_distances = distances.copy()
@@ -154,22 +140,17 @@ for k in range(iterations):
 
             # Find the robot with the smallest normal and weighted distances
             min_index = np.argmin(distances)
-            if distances1:
-                min_index1 = np.argmin(distances1)
-                c_v1[min_index1][0] += ix * importance_value
-                c_v1[min_index1][1] += iy * importance_value
-                w_v1[min_index1] += importance_value
-            if distances2:
-                min_index2 = np.argmin(distances2)
-                c_v2[min_index2][0] += ix * importance_value
-                c_v2[min_index2][1] += iy * importance_value
-                w_v2[min_index2] += importance_value
             weighted_min_index = np.argmin(weighted_distances)
             velocity_min_index = np.argmin(velocity_distances)
             cost_min_index = np.argmin(cost_distances)
             sensor_capacity = ranges[min_index]/2
             w_vw[weighted_min_index] += importance_value
             w_vc[cost_min_index] += importance_value
+
+            # Intermediate calculations for the Weighted Voronoi Partitioning
+            c_vr[velocity_min_index][0] += ix * importance_value
+            c_vr[velocity_min_index][1] += iy * importance_value
+            w_vr[velocity_min_index] += importance_value
 
             # Calculate costs
             for sensor_type in S:
@@ -195,13 +176,19 @@ for k in range(iterations):
                 Hr += (distances[min_index] ** 2) * importance_value
             Hc += 0.5 * ((distances[cost_min_index] ** 2) - ci[cost_min_index]) * importance_value
 
+    # Create a Voronoi diagram based on the robot positions
+    points = np.array([current_x.flatten(), current_y.flatten()]).T
+    vor = Voronoi(points)
+
+    # Initialize the single-integrator control inputs
     si_velocities = np.zeros((2, N))
 
     # Make a copy of the current weights and costs, use this for calculations below
     weights = wi.copy()
     cost_weights = ci.copy()
 
-    for robots, sensor_types in robot_sensors.items():
+    # Iterate for the number of robots, this is the velocity and weight controller portion of the code
+    for robots in range(N):
 
         # Instantiate the summation variables to zero
         summation = 0
@@ -221,30 +208,20 @@ for k in range(iterations):
             distance_traveled[robots] = float(np.sqrt((abs(current_x[robots][0] - previous_x[robots][0]) ** 2) + \
                                                       (abs(current_y[robots][0] - previous_y[robots][0]) ** 2)))
 
-        if 1 in sensor_types and w_v1[list(N1).index(robots+1)] != 0:
-            c_x1 = c_v1[list(N1).index(robots+1)][0] / w_v1[list(N1).index(robots+1)]
-            c_y1 = c_v1[list(N1).index(robots+1)][1] / w_v1[list(N1).index(robots+1)]
-        else:
-            c_x1 = 0
-            c_y1 = 0
+        # Calculate the x and y coordinates of the centroids of the Weighted Voronoi Partitions
+        if not w_vr[robots] == 0:
+            c_x = c_vr[robots][0] / w_vr[robots]
+            c_y = c_vr[robots][1] / w_vr[robots] 
 
-        if 2 in sensor_types and w_v2[list(N2).index(robots+1)] != 0:
-            c_x2 = c_v2[list(N2).index(robots+1)][0] / w_v2[list(N2).index(robots+1)]
-            c_y2 = c_v2[list(N2).index(robots+1)][1] / w_v2[list(N2).index(robots+1)]
-        else:
-            c_x2 = 0
-            c_y2 = 0
+            # Calculate ki
+            dist_from_cent = np.sqrt(((c_x - current_x[robots][0]) ** 2) + ((c_y - current_y[robots][0]) ** 2))
+            ki = min((v_r[robots]/(kv * dist_from_cent)),kv)
 
-        # c_x = (c_x1 + c_x2)/len(sensor_types)
-        # c_y = (c_y1 + c_y2)/len(sensor_types)
-        c_x = c_x1 + c_x2
-        c_y = c_y1 + c_y2
+            # Calcualte the velocity of each robot
+            si_velocities[:, robots] = ki * np.array([(c_x - current_x[robots][0]), (c_y - current_y[robots][0])])
 
-        # Calcualte the velocity of each robot
-        si_velocities[:, robots] = kv * np.array([(c_x - current_x[robots][0]), (c_y - current_y[robots][0])])
-
-        # Append the current centroid and velocity to the lists
-        cwi[:, robots] = np.array([c_x, c_y])
+            # Append the current centroid and velocity to the lists
+            cwi[:, robots] = np.array([c_x, c_y])
 
     # Make a copy of distance traveled array to calculate total distances
     total_distances = distance_traveled.copy()
@@ -274,26 +251,39 @@ for k in range(iterations):
         print(f"Converged at iteration {converged_iteration}")
         break
 
-    #si_velocities = si_barrier_cert(si_velocities, x_si)
+    # Use the barrier certificate to avoid collisions
+    si_velocities = si_barrier_cert(si_velocities, x_si)
+
+    # Transform single integrator to unicycle
     dxu = si_to_uni_dyn(si_velocities, x)
+
+    # Set the velocities of agents 1,...,N
     r.set_velocities(np.arange(N), dxu)
+    # Iterate the simulation
     r.step()
 
-    points = np.array([current_x.flatten(), current_y.flatten()]).T
-    vor = Voronoi(points)
+    # Clear the previous plot
     ax.clear()
+
+    # Plot the Voronoi diagram
     voronoi_plot_2d(vor, ax=ax, show_vertices=False, line_colors='r')
+
+    # Plot robots' positions
     ax.scatter(current_x.flatten(), current_y.flatten(), c='b', marker='o')
+
+    # Set plot limits and labels
     ax.set_xlim(x_min, x_max)
     ax.set_ylim(y_min, y_max)
     ax.set_xlabel('X')
     ax.set_ylabel('Y')
     ax.set_title(f'Iteration {k+1} - Voronoi Partitioning')
+
+    # Draw the plot
     plt.draw()
-    plt.pause(0.1)
+    plt.pause(0.1)  # Pause to update the plot
 
 # Outputs the data to a .csv file
-with open("output1.csv", mode="w", newline="") as file:
+with open("output3.csv", mode="w", newline="") as file:
     writer = csv.writer(file)
     writer.writerow([f"Number of Iterations: {converged_iteration}"])
     writer.writerow(["X Poses", "Y Poses"])
@@ -336,6 +326,7 @@ with open("output1.csv", mode="w", newline="") as file:
     for index, value in enumerate(total_Hc, start=1):
         writer.writerow([f"Iteration {index}: {value}"])
     writer.writerow([])
-    writer.writerow(["Sensor Type Baseline"])
+    writer.writerow(["Mobility Baseline"])
 
+#Call at end of script to print debug information and for your script to run on the Robotarium server properly
 r.call_at_scripts_end()
