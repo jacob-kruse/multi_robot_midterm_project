@@ -46,21 +46,17 @@ w_h = 1              # Weight for sensor quality cost
 w_r = 1              # Weight for sensor capacity cost
 alpha = 0.1          # Adaptive weight update rate
 curve_factor = 0.01  # Factor to add to the curvature to the movement
-S = {1,2}              # Set of sensor types
-N1 = {1,2,3}     # Set of robots with sensor type 1
-N2 = {3,4,5}              # Set of robots with sensor type 1
-hi1 = [1,0.5,1]    # Set sensor health for sensor type 1
-hi2 = [1,0.5,1]             # Set sensor health for sensor type 2
-v_r = [1,1,2,1,1]    # Velocities set to 1 initially for all robots
-Rrs1 = [1,0.5,1]   # Set sensor health for sensor type 1
-Rrs2 = [1,0.5,1]            # Set sensor health for sensor type 2
+S = {1}              # Set of sensor types
+N1 = {1,2,3,4,5}     # Set of robots with sensor type 1
+N2 = {}              # Set of robots with sensor type 1
+hi1 = [1,1,1,1,1]    # Set sensor health for sensor type 1
+hi2 = []             # Set sensor health for sensor type 2
+v_r = [1,1,1,1,1]    # Velocities set to 1 initially for all robots
+Rrs1 = [1,1,1,1,1]   # Set sensor health for sensor type 1
+Rrs2 = []            # Set sensor health for sensor type 2
 hi = hi1 + hi2       # Calculate overall sensor health array
 Rrs = Rrs1 + Rrs2    # Calculate overall sensor capacity array
 wi = np.zeros(N)     # Weights initially set to zero and calculated later (Only used for Power Cost Calculation)
-''' (JK)
-# weights= np.zeros(N) # Cost Weights initially set to zero and calculated later
-# costs = np.zeros(N)  # Costs initially set to zero and calculated based on values above
-'''
 ci = np.zeros(N)     # Costs for custom cost initially set to zero and calculated 
 costs_1= []          # Costs for sensor type 1 initially set to zero and calculated based on values above
 costs_2 = []         # Costs for sensor type 2 initially set to zero and calculated based on values above
@@ -102,39 +98,11 @@ si_to_uni_dyn, uni_to_si_states = create_si_to_uni_mapping()
 # Visualization setup
 fig, ax = plt.subplots()
 
-# def compute_cost(i): (JK)
 def compute_cost():
     """
     Function to compute the cost of the robot based on the predefined sensor qualities,
     velocities, sensor capacities, and their corresponding weights
     """
-    '''(JK)
-    # Calculate the velocity cost
-    velocity_cost = v_r[i - 1] * w_v
-
-    # Calculate the sensor quality and capacity cost for each sensor type
-    if i in N1:
-        quality_cost_1 = hi1[list(N1).index(i)] * w_h
-        capacity_cost_1 = Rrs1[list(N1).index(i)] * w_r
-        sensor_cost_1 = quality_cost_1 + capacity_cost_1
-    else:
-        sensor_cost_1 = 0
-    if i in N2:
-        quality_cost_2 = hi2[list(N2).index(i)] * w_h
-        capacity_cost_2 = Rrs2[list(N2).index(i)] * w_r
-        sensor_cost_2 = quality_cost_2 + capacity_cost_2
-    else:
-        sensor_cost_2 = 0
-
-    # Add both sensor costs for each type, necessary if a robot has both sensors
-    sensor_cost = (sensor_cost_1/len(S)) + (sensor_cost_2/len(S))
-
-    # Calculate the total cost
-    total_cost = velocity_cost + sensor_cost
-
-    return total_cost
-    '''
-
     for robot, sensor_types in robot_sensors.items():
 
         # Calculate the velocity cost
@@ -156,9 +124,6 @@ def compute_cost():
             total_cost_2 = sensor_cost_2 + velocity_cost
             costs_2.append(total_cost_2)
 
-# def adaptive_weight_update(N, weights, costs, alpha=0.1, damping_factor=0.1, weight_limit=(0.1, 10)): (JK)
-
-
 def adaptive_weight_update():
     """
     Function to update the weights of robots dynamically based on cost difference, compensatory nature, 
@@ -178,10 +143,11 @@ def adaptive_weight_update():
     alpha=0.1
     damping_factor=0.95
     adaptive_factor_increase=0.2
-    weight_limit = (0.1, 15)  # Increased upper limit for weights
-     # Initialize weight arrays for sensor types 1 and 2
-    weights_1 = np.zeros(len(N1))  # Assuming these are initialized somewhere
-    weights_2 = np.zeros(len(N2))
+    weight_limit = (-15, 15)  # Increased upper limit for weights
+
+    # Initialize weight change variables
+    weight_change_1 = None
+    weight_change_2 = None
     
     # Track previous weights for early stopping or smooth adjustments
     prev_weights_1 = np.copy(weights_1)
@@ -193,8 +159,8 @@ def adaptive_weight_update():
         summation_2 = 0
         
         # Adaptive weighting parameters (can be dynamically adjusted based on conditions)
-        adaptive_factor_1 = alpha  # Can be adjusted based on conditions
-        adaptive_factor_2 = alpha  # Can be adjusted based on conditions
+        adaptive_factor_1 = alpha * 10.5263157  # Can be adjusted based on conditions
+        adaptive_factor_2 = alpha * 10.5263157 # Can be adjusted based on conditions
         
         # Compensatory Nature: If the cost of one criterion is low, increase weight for the other criterion
         # Weights based on sensor type 1
@@ -213,6 +179,13 @@ def adaptive_weight_update():
             # Update the weight dynamically with compensation
             weights_1[index] += (kc / (2 * w_v1[robot])) * summation_1 * adaptive_factor_1
             weights_1[index] *= damping_factor
+
+            # Calculate the change in weights (used for adaptive learning or stopping criteria)
+            weight_change_1 = np.linalg.norm(weights_1 - prev_weights_1)
+
+            # Clip the weights to stay within the weight limit (min/max bound)
+            weights_1[index] = np.clip(weights_1[index], weight_limit[0], weight_limit[1])
+
         # Weights based on sensor type 2
         if (robot + 1) in N2:
             index = list(N2).index(robot + 1)
@@ -229,28 +202,23 @@ def adaptive_weight_update():
             # Update the weight dynamically with compensation
             weights_2[index] += (kc / (2 * w_v2[robot])) * summation_2 * adaptive_factor_2
             weights_2[index] *= damping_factor
-        # Clip the weights to stay within the weight limit (min/max bound)
-        weights_1[index] = np.clip(weights_1[index], weight_limit[0], weight_limit[1])
-        weights_2[index] = np.clip(weights_2[index], weight_limit[0], weight_limit[1])
 
-    # Calculate the change in weights (used for adaptive learning or stopping criteria)
-    weight_change_1 = np.linalg.norm(weights_1 - prev_weights_1)
-    weight_change_2 = np.linalg.norm(weights_2 - prev_weights_2)
+            # Clip the weights to stay within the weight limit (min/max bound)
+            weights_2[index] = np.clip(weights_2[index], weight_limit[0], weight_limit[1])
+
+            # Calculate the change in weights (used for adaptive learning or stopping criteria)
+            weight_change_2 = np.linalg.norm(weights_2 - prev_weights_2)
 
     # Optionally, apply an adaptive learning rate reduction based on the rate of change
-    if weight_change_1 < 1e-5 and weight_change_2 < 1e-5:
+    if weight_change_1 < 1e-5 or weight_change_2 < 1e-5:
         alpha = max(0.01, alpha * 0.99)  # Reduce alpha after each iteration by 1%
 
     print("Weights for Sensor Type 1:", weights_1)
     print("Weights for Sensor Type 2:", weights_2)
 
-    return weights_1, weights_2
-
 # Compute the costs for each robot before proceeding to algorithm
 compute_cost()
 
-weights_1 = np.zeros(len(N1))
-weights_2 = np.zeros(len(N2))
 # Iteration loop
 for k in range(iterations):
     x = r.get_poses()
@@ -265,10 +233,6 @@ for k in range(iterations):
     Hv = 0
     Hr = 0
     Hc = 0
-    '''(JK)
-    c_vc = np.zeros((N, 2))
-    w_vc = np.zeros(N)
-    '''
     c_v1 = np.zeros((N, 2))
     w_v1 = np.zeros(N)
     c_v2 = np.zeros((N, 2))
@@ -276,8 +240,8 @@ for k in range(iterations):
     w_vw = np.zeros(N)
     w_vi = np.zeros(N)
     cwi = np.zeros((2,N))
-    # weights_1 = np.zeros(len(N1))
-    # weights_2= np.zeros(len(N2))
+    weights_1 = np.zeros(len(N1))
+    weights_2= np.zeros(len(N2))
     si_velocities = np.zeros((2,N))
     new_centroids = np.zeros((N,2))
     new_centroids_1 = np.zeros((N,2))
@@ -293,15 +257,13 @@ for k in range(iterations):
 
             # Set the importance value to 1, this represents the distribution function
             importance_value = 1
-
-            # Calculate the standard distances
-            distances = np.linalg.norm(np.column_stack((current_x, current_y)) - np.array([ix, iy]), axis=1)
             
             # Instantiate the distance arrays for the separate Voronoi regions for each sensor type
+            distances = np.zeros(N)
             distances_1 = np.zeros(len(N1))
             distances_2 = np.zeros(len(N2))
 
-            # Calculate the standard distances (JK: This might be same as above, didnt have time to test)
+            # Calculate the standard distances
             for robots in range(N):
                 distances[robots] = np.sqrt(np.square(ix - current_x[robots]) + np.square(iy - current_y[robots]))
             
@@ -324,7 +286,6 @@ for k in range(iterations):
             # Subtract the costs from the normalized distances to find our custom Voronoi Partitions
             cost_weighted_distances = distances.copy()
             cost_weighted_distances -= ci
-            # cost_weighted_distances -= weights (JK)
 
             # Find the minimum indexes for the different Voronoi partitions
             min_index = np.argmin(distances)
@@ -345,12 +306,6 @@ for k in range(iterations):
                 c_v2[min_index2] += [ix * importance_value, iy * importance_value]
                 w_v2[min_index2] += importance_value
 
-            '''(JK)
-            # Calculate the centroids and masses for our custom algorithm
-            c_vc[cost_weighted_min_index] += [importance_value * ix, importance_value * iy]
-            w_vc[cost_weighted_min_index] += importance_value
-            '''
-
             # Calculate sensor capacity and mass of weighted Voronoi partitions for cost calculations below
             sensor_capacity = ranges[min_index]/2
             w_vw[weighted_min_index] += importance_value
@@ -363,15 +318,15 @@ for k in range(iterations):
                     for robot in N1:
                         current_distance = np.sqrt(np.square(ix - current_x[robot-1]) + np.square(iy - current_y[robot-1]))
                         type_distances.append(current_distance)
-                    min_index = np.argmin(type_distances)
-                    Hg += (type_distances[min_index] ** 2) * importance_value
+                    min_index_1 = np.argmin(type_distances)
+                    Hg += (type_distances[min_index_1] ** 2) * importance_value
                 elif sensor_type == 2:
                     type_distances = []
                     for robot in N2:
                         current_distance = np.sqrt(np.square(ix - current_x[robot-1]) + np.square(iy - current_y[robot-1]))
                         type_distances.append(current_distance)
-                    min_index = np.argmin(type_distances)
-                    Hg += (type_distances[min_index] ** 2) * importance_value
+                    min_index_2 = np.argmin(type_distances)
+                    Hg += (type_distances[min_index_2] ** 2) * importance_value
             Hp += 0.5 * ((distances[weighted_min_index] ** 2) - wi[weighted_min_index]) * importance_value
             Hv += ((distances[velocity_min_index]/v_r[velocity_min_index]) ** 2) * importance_value
             if distances[min_index] > sensor_capacity:
@@ -379,17 +334,15 @@ for k in range(iterations):
             if distances[min_index] <= sensor_capacity:
                 Hr += (distances[min_index] ** 2) * importance_value
             Hc += 0.5 * ((distances[cost_weighted_min_index] ** 2) - ci[cost_weighted_min_index]) * importance_value
-            # Hc += 0.5 * ((distances[cost_weighted_min_index] ** 2) - weights[cost_weighted_min_index]) * importance_value (JK)
 
     # Make a copy of the current weights and costs (Only used for Cost Calculations)
     wi_copy = wi.copy()
     cost_weights = ci.copy()
 
     # Dyanmically adjust kv to converge quicker
-    kv = np.mean(v_r) #overall speed is influenced by robot parameters
-    print(kv)
+    kv = np.mean(v_r)
+
     # Iterate for the number of robots, this is the velocity and weight controller portion of the code
-    # for robot in range(N): (JK)
     for robot, sensor_types in robot_sensors.items():
 
         # Instantiate the summation variables to zero for the next calculations (Only used for Cost Calculations)
@@ -410,7 +363,6 @@ for k in range(iterations):
             distance_traveled[robot] = float(np.sqrt((abs(current_x[robot][0] - previous_x[robot][0]) ** 2) + \
                                                       (abs(current_y[robot][0] - previous_y[robot][0]) ** 2)))
 
-        # if w_vc[robot] != 0: (JK)
         if w_v1[robot] != 0 or w_v2[robot] != 0:
     
             if 1 in sensor_types:
@@ -418,11 +370,6 @@ for k in range(iterations):
 
             if 2 in sensor_types:
                 new_centroids_2[robot] = c_v2[robot] / w_v2[robot]
-
-            '''(JK)
-            # Calculate the new centroids
-            new_centroids[robot] = c_vc[robot] / w_vc[robot]
-            '''
 
             # Calculate the centroid of the robot based on the centroids for each Voronoi region for the sensor types
             new_centroids[robot] = (new_centroids_1[robot] + new_centroids_2[robot])/len(list(robot_sensors[robot]))
@@ -436,15 +383,11 @@ for k in range(iterations):
             # Calcualte the velocities of each robot
             si_velocities[:, robot] = kv * (direction_to_target + curvature_adjustment / norm_direction)
             si_velocities[:, robot] *= v_r[robot] #robots with higher velocity values actually move faster
-            # si_velocities[:, robot] = kv * (direction_to_target) (JK: This is velocity calculation without curvature, just for testing)
+            # si_velocities[:, robot] = kv * (direction_to_target) (This is velocity calculation without curvature, just for testing)
 
             # Append the current centroid and velocity to the lists
             cwi[:, robot] = np.array(new_centroids[robot])
 
-    '''(JK)
-    # Call adaptive weight update
-    weights = adaptive_weight_update(N, weights, costs)
-    '''
     # Call adaptive weight update
     adaptive_weight_update()
 

@@ -178,15 +178,15 @@ for k in range(iterations):
                     for robot in N1:
                         current_distance = np.sqrt(np.square(ix - current_x[robot-1]) + np.square(iy - current_y[robot-1]))
                         type_distances.append(current_distance)
-                    min_index = np.argmin(type_distances)
-                    Hg += (type_distances[min_index] ** 2) * importance_value
+                    min_index_1 = np.argmin(type_distances)
+                    Hg += (type_distances[min_index_1] ** 2) * importance_value
                 elif sensor_type == 2:
                     type_distances = []
                     for robot in N2:
                         current_distance = np.sqrt(np.square(ix - current_x[robot-1]) + np.square(iy - current_y[robot-1]))
                         type_distances.append(current_distance)
-                    min_index = np.argmin(type_distances)
-                    Hg += (type_distances[min_index] ** 2) * importance_value
+                    min_index_2 = np.argmin(type_distances)
+                    Hg += (type_distances[min_index_2] ** 2) * importance_value
             Hp += 0.5 * ((distances[weighted_min_index] ** 2) - wi[weighted_min_index]) * importance_value
             Hv += ((distances[velocity_min_index]/v_r[velocity_min_index]) ** 2) * importance_value
             if distances[min_index] > sensor_capacity:
@@ -237,8 +237,8 @@ for k in range(iterations):
 
         # c_x = (c_x1 + c_x2)/len(sensor_types)
         # c_y = (c_y1 + c_y2)/len(sensor_types)
-        c_x = c_x1 + c_x2
-        c_y = c_y1 + c_y2
+        c_x = (c_x1 + c_x2)/len(list(robot_sensors[robots]))
+        c_y = (c_y1 + c_y2)/len(list(robot_sensors[robots]))
 
         # Calcualte the velocity of each robot
         si_velocities[:, robots] = kv * np.array([(c_x - current_x[robots][0]), (c_y - current_y[robots][0])])
