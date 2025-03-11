@@ -210,7 +210,7 @@ def adaptive_weight_update():
             
                 # Calculate the difference between all of the neighbors and multiply by the given factor to find the updated weight
                 summation_1 += (costs_1[index] - weights_1[index]) - (costs_1[neighbor_index] - weights_1[neighbor_index])
-                weights_1[robot] = (kc/(2*w_vw[robot])) * summation_1
+                weights_1[robot] = (kc/(2*w_v1[robot])) * summation_1
 
         # Find the 
         # current robot's weight for sensor type 2 if it has this sensor
@@ -227,7 +227,7 @@ def adaptive_weight_update():
                 
                 # Calculate the difference between all of the neighbors and multiply by the given factor to find the updated weight
                 summation_2 += (costs_2[index] - weights_2[index]) - (costs_2[neighbor_index] - weights_2[neighbor_index])
-                weights_2[robot] = (kc/(2*w_vw[robot])) * summation_2
+                weights_2[index] = (kc/(2*w_v2[robot])) * summation_2
 
     print("Weights for Sensor Type 1:", weights_1)
     print("Weights for Sensor Type 2:", weights_2)
@@ -300,7 +300,8 @@ for k in range(iterations):
                 if 1 in sensor_types:
                     distances_1[robot] = np.sqrt(np.square(ix - current_x[robot]) + np.square(iy - current_y[robot]))
                 if 2 in sensor_types:
-                    distances_2[robot] = np.sqrt(np.square(ix - current_x[robot]) + np.square(iy - current_y[robot]))
+                    index = list(N2).index(robot+1)
+                    distances_2[index] = np.sqrt(np.square(ix - current_x[robot]) + np.square(iy - current_y[robot]))
 
             # Subtract the weights from the normalized distances to find the weighted Voronoi Partitions
             weighted_distances = distances.copy()
