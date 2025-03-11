@@ -57,8 +57,14 @@ Rrs2 = []            # Set sensor health for sensor type 2
 hi = hi1 + hi2       # Calculate overall sensor health array
 Rrs = Rrs1 + Rrs2    # Calculate overall sensor capacity array
 wi = np.zeros(N)     # Weights initially set to zero and calculated later (Only used for Power Cost Calculation)
-weights= np.zeros(N) # Cost Weights initially set to zero and calculated later
-costs = np.zeros(N)  # Costs initially set to zero and calculated based on values above
+''' (JK)
+# weights= np.zeros(N) # Cost Weights initially set to zero and calculated later
+# costs = np.zeros(N)  # Costs initially set to zero and calculated based on values above
+'''
+ci = np.zeros(N)     # Costs for custom cost initially set to zero and calculated 
+costs_1= []          # Costs for sensor type 1 initially set to zero and calculated based on values above
+costs_2 = []         # Costs for sensor type 2 initially set to zero and calculated based on values above
+robot_sensors = {}   # A set that is calculated later that holds the sensor types for each robot
 max_range = np.sqrt(((x_max-x_min) ** 2) + ((y_max-y_min) ** 2)) # Calculate the maximum range to cover entire simulation
 
 # Status and Performance Variables
@@ -76,6 +82,16 @@ previous_x = None
 previous_y = None
 converged_iteration = -1
 
+# Define the robot sensors set to be used for calculations
+for i in range(N):
+    robot_index = i + 1  
+    assigned_sensors = set()
+    if robot_index in N1:
+        assigned_sensors.add(1)
+    if robot_index in N2:
+        assigned_sensors.add(2)
+    robot_sensors[i] = assigned_sensors
+
 # Instantiate Robotarium object
 r = robotarium.Robotarium(number_of_robots=N, sim_in_real_time=True, initial_conditions=initial_conditions[0:N].T)
 
@@ -86,11 +102,13 @@ si_to_uni_dyn, uni_to_si_states = create_si_to_uni_mapping()
 # Visualization setup
 fig, ax = plt.subplots()
 
-def compute_cost(i):
+# def compute_cost(i): (JK)
+def compute_cost():
     """
     Function to compute the cost of the robot based on the predefined sensor qualities,
     velocities, sensor capacities, and their corresponding weights
     """
+    '''(JK)
     # Calculate the velocity cost
     velocity_cost = v_r[i - 1] * w_v
 
@@ -115,8 +133,31 @@ def compute_cost(i):
     total_cost = velocity_cost + sensor_cost
 
     return total_cost
+    '''
 
-def adaptive_weight_update(N, weights, costs, alpha=0.1, damping_factor=0.1, weight_limit=(0.1, 10)):
+    for robot, sensor_types in robot_sensors.items():
+
+        # Calculate the velocity cost
+        velocity_cost = v_r[robot] * w_v
+
+        # Calculate the cost for robots with sensor type 1 
+        if 1 in sensor_types:
+            quality_cost_1 = hi1[list(N1).index(robot+1)] * w_h
+            capacity_cost_1 = Rrs1[list(N1).index(robot+1)] * w_r
+            sensor_cost_1 = quality_cost_1 + capacity_cost_1
+            total_cost_1 = sensor_cost_1 + velocity_cost
+            costs_1.append(total_cost_1)
+
+        # Calculate the cost for robots with sensor type 2 
+        if 2 in sensor_types:
+            quality_cost_2 = hi2[list(N2).index(robot+1)] * w_h
+            capacity_cost_2 = Rrs2[list(N2).index(robot+1)] * w_r
+            sensor_cost_2 = quality_cost_2 + capacity_cost_2
+            total_cost_2 = sensor_cost_2 + velocity_cost
+            costs_2.append(total_cost_2)
+
+# def adaptive_weight_update(N, weights, costs, alpha=0.1, damping_factor=0.1, weight_limit=(0.1, 10)): (JK)
+def adaptive_weight_update():
     """
     Function to update the weights of robots dynamically based on cost difference and other adaptive rules.
     
@@ -131,6 +172,7 @@ def adaptive_weight_update(N, weights, costs, alpha=0.1, damping_factor=0.1, wei
     Returns:
     - weights (list or array): Updated weights for all robots
     """
+    '''(JK)
     for robot in range(N):
 
         # Instantiate the summation variable to zero for the next calculation
@@ -143,38 +185,61 @@ def adaptive_weight_update(N, weights, costs, alpha=0.1, damping_factor=0.1, wei
         # Calculate the weights
         weights[robot] = (kc/(2*w_vw[robot])) * summation
 
-        # # Calculate the weight diff
-        # weight_diff = summation
-        
-        # # Update the weight based on the cost difference
-        # weight_update = alpha * weight_diff
-        
-        # # Adjust weight dynamically during decision-making
-        # # If cost is high, prioritize improving that robot's performance
-        # if costs[i] > 1.0:  # Example: If cost is high, decrease weight to prioritize improvement
-        #     weights[i] -= weight_update * 0.5  # Penalize robots with high cost slightly
-        # else:
-        #     weights[i] += weight_update * 0.5  # Reward robots with lower cost
-        
-        # # Apply damping factor to avoid drastic changes in weights
-        # weights[i] += weight_update * damping_factor
-        
-        # # Ensure weights stay within a reasonable range
-        # weights[i] = max(weight_limit[0], min(weight_limit[1], weights[i]))  # Enforce min and max limits
-        
-        # # Penalize overperforming robots (adaptive nature)
-        # if weights[i] > 5:  # Example threshold for re-adjustment, can be changed
-        #     weights[i] -= 0.1  # Slight reduction for robots performing too well, to balance task distribution
-    
     print("Weights:", weights)
 
     return weights
+    '''
 
+    for robot, sensor_types in robot_sensors.items():
+
+        # Instantiate the summation variables to zero for the next calculation
+        summation_1 = 0
+        summation_2 = 0
+
+        # Find the current robot's weight for sensor type 1 if it has this sensor
+        if (robot+1) in N1:
+
+            # Get the index of the current robot in terms of the set of robots with sensor type 1
+            index = list(N1).index(robot+1)
+
+            # Compare the current robot to all of its neighbors with the same sensor type to calculate the weights
+            for neighbor in N1:
+
+                # Get the index of the current neighbor robot in terms of the set of robots with sensor type 1
+                neighbor_index = list(N1).index(neighbor)
+            
+                # Calculate the difference between all of the neighbors and multiply by the given factor to find the updated weight
+                summation_1 += (costs_1[index] - weights_1[index]) - (costs_1[neighbor_index] - weights_1[neighbor_index])
+                weights_1[robot] = (kc/(2*w_vw[robot])) * summation_1
+
+        # Find the 
+        # current robot's weight for sensor type 2 if it has this sensor
+        if (robot+1) in N2:
+
+            # Get the index of the current robot in terms of the set of robots with sensor type 2
+            index = list(N2).index(robot+1)
+
+            # Compare the current robot to all of its neighbors with the same sensor type to calculate the weights
+            for neighbor in N2:
+
+                # Get the index of the current neighbor robot in terms of the set of robots with sensor type 2
+                neighbor_index = list(N2).index(neighbor)
+                
+                # Calculate the difference between all of the neighbors and multiply by the given factor to find the updated weight
+                summation_2 += (costs_2[index] - weights_2[index]) - (costs_2[neighbor_index] - weights_2[neighbor_index])
+                weights_2[robot] = (kc/(2*w_vw[robot])) * summation_2
+
+    print("Weights for Sensor Type 1:", weights_1)
+    print("Weights for Sensor Type 2:", weights_2)
+
+'''(JK)
 # Compute cost  for each robot
 for i in range(1, N + 1):
     costs[i - 1] = compute_cost(i)
+'''
 
-print(f"Computed Costs: {costs}")
+# Compute the costs for each robot before proceeding to algorithm
+compute_cost()
 
 # Iteration loop
 for k in range(iterations):
@@ -190,12 +255,23 @@ for k in range(iterations):
     Hv = 0
     Hr = 0
     Hc = 0
+    '''(JK)
     c_vc = np.zeros((N, 2))
     w_vc = np.zeros(N)
+    '''
+    c_v1 = np.zeros((N, 2))
+    w_v1 = np.zeros(N)
+    c_v2 = np.zeros((N, 2))
+    w_v2 = np.zeros(N)
     w_vw = np.zeros(N)
+    w_vi = np.zeros(N)
     cwi = np.zeros((2,N))
+    weights_1 = np.zeros(len(N1))
+    weights_2= np.zeros(len(N2))
     si_velocities = np.zeros((2,N))
     new_centroids = np.zeros((N,2))
+    new_centroids_1 = np.zeros((N,2))
+    new_centroids_2 = np.zeros((N,2))
     distance_traveled = np.zeros(N)
 
     # Calculate each robot's sensor range
@@ -208,9 +284,24 @@ for k in range(iterations):
             # Set the importance value to 1, this represents the distribution function
             importance_value = 1
 
-            # Calculate the distances
+            # Calculate the standard distances
             distances = np.linalg.norm(np.column_stack((current_x, current_y)) - np.array([ix, iy]), axis=1)
             
+            # Instantiate the distance arrays for the separate Voronoi regions for each sensor type
+            distances_1 = np.zeros(len(N1))
+            distances_2 = np.zeros(len(N2))
+
+            # Calculate the standard distances (JK: This might be same as above, didnt have time to test)
+            for robots in range(N):
+                distances[robots] = np.sqrt(np.square(ix - current_x[robots]) + np.square(iy - current_y[robots]))
+            
+            # Calculate the distance arrays for the separate Voronoi regions for each sensor type
+            for robot, sensor_types in robot_sensors.items():
+                if 1 in sensor_types:
+                    distances_1[robot] = np.sqrt(np.square(ix - current_x[robot]) + np.square(iy - current_y[robot]))
+                if 2 in sensor_types:
+                    distances_2[robot] = np.sqrt(np.square(ix - current_x[robot]) + np.square(iy - current_y[robot]))
+
             # Subtract the weights from the normalized distances to find the weighted Voronoi Partitions
             weighted_distances = distances.copy()
             weighted_distances -= wi
@@ -221,21 +312,37 @@ for k in range(iterations):
 
             # Subtract the costs from the normalized distances to find our custom Voronoi Partitions
             cost_weighted_distances = distances.copy()
-            cost_weighted_distances -= weights
+            cost_weighted_distances -= ci
+            # cost_weighted_distances -= weights (JK)
 
             # Find the minimum indexes for the different Voronoi partitions
             min_index = np.argmin(distances)
             weighted_min_index = np.argmin(weighted_distances)
             velocity_min_index = np.argmin(velocity_distances)
             cost_weighted_min_index = np.argmin(cost_weighted_distances)
+            
+            # Calculate the custom weighted Voronoi centroids and masses for each sensor typr
+            if len(list(N1)) > 0:
+                distances_1 -= weights_1
+                min_index1 = np.argmin(distances_1)
+                c_v1[min_index1] += [ix * importance_value, iy * importance_value]
+                w_v1[min_index1] += importance_value
+            if len(list(N2)) > 0:
+                distances_2 -= weights_2
+                min_index2 = np.argmin(distances_2)
+                c_v2[min_index2] += [ix * importance_value, iy * importance_value]
+                w_v2[min_index2] += importance_value
 
+            '''(JK)
             # Calculate the centroids and masses for our custom algorithm
             c_vc[cost_weighted_min_index] += [importance_value * ix, importance_value * iy]
             w_vc[cost_weighted_min_index] += importance_value
+            '''
 
             # Calculate sensor capacity and mass of weighted Voronoi partitions for cost calculations below
             sensor_capacity = ranges[min_index]/2
             w_vw[weighted_min_index] += importance_value
+            w_vi[cost_weighted_min_index] += importance_value
 
             # Calculate other Cost Values
             for sensor_type in S:
@@ -259,33 +366,54 @@ for k in range(iterations):
                 Hr += (sensor_capacity ** 2) * importance_value
             if distances[min_index] <= sensor_capacity:
                 Hr += (distances[min_index] ** 2) * importance_value
-            Hc += 0.5 * ((distances[cost_weighted_min_index] ** 2) - weights[cost_weighted_min_index]) * importance_value
+            Hc += 0.5 * ((distances[cost_weighted_min_index] ** 2) - ci[cost_weighted_min_index]) * importance_value
+            # Hc += 0.5 * ((distances[cost_weighted_min_index] ** 2) - weights[cost_weighted_min_index]) * importance_value (JK)
 
-    # Make a copy of the current weights (Only used for Power Cost Calculation)
+    # Make a copy of the current weights and costs (Only used for Cost Calculations)
     wi_copy = wi.copy()
+    cost_weights = ci.copy()
+
+    # Dyanmically adjust kv to converge quicker
+    kv = max(200/((k/4)+50),1.0)
 
     # Iterate for the number of robots, this is the velocity and weight controller portion of the code
-    for robot in range(N):
+    # for robot in range(N): (JK)
+    for robot, sensor_types in robot_sensors.items():
 
-        # Instantiate the summation variable to zero for the next calculations (Only used for Power Cost Calculation)
+        # Instantiate the summation variables to zero for the next calculations (Only used for Cost Calculations)
         summation = 0
+        cost_summation = 0
 
         # Calculate the summation for the weights (Only used for Power Cost Calculation)
         for neighbor in range(N):
             summation += (hi[robot] - wi_copy[robot]) - (hi[neighbor] - wi_copy[neighbor])
+            cost_summation += (ci[robots] - cost_weights[robots]) - (ci[neighbor] - cost_weights[neighbor])
         
         # Calculate the new weights (Only used for Power Cost Calculation)
         wi[robot] += (kw/(2*w_vw[robot])) * summation
+        ci[robots] += (kc/(2*w_vi[robots])) * cost_summation
 
         # Calculate the distance travled from the previous iteration
         if previous_x is not None and previous_y is not None:
             distance_traveled[robot] = float(np.sqrt((abs(current_x[robot][0] - previous_x[robot][0]) ** 2) + \
                                                       (abs(current_y[robot][0] - previous_y[robot][0]) ** 2)))
 
-        if w_vc[robot] != 0:
+        # if w_vc[robot] != 0: (JK)
+        if w_v1[robot] != 0 or w_v2[robot] != 0:
+    
+            if 1 in sensor_types:
+                new_centroids_1[robot] = c_v1[robot] / w_v1[robot]
 
+            if 2 in sensor_types:
+                new_centroids_2[robot] = c_v2[robot] / w_v2[robot]
+
+            '''(JK)
             # Calculate the new centroids
             new_centroids[robot] = c_vc[robot] / w_vc[robot]
+            '''
+
+            # Calculate the centroid of the robot based on the centroids for each Voronoi region for the sensor types
+            new_centroids[robot] = (new_centroids_1[robot] + new_centroids_2[robot])/len(list(robot_sensors[robot]))
 
             # Apply curvature by modifying the velocity direction slightly
             direction_to_target = np.array([new_centroids[robot][0] - current_x[robot, 0], 
@@ -295,13 +423,18 @@ for k in range(iterations):
             
             # Calcualte the velocities of each robot
             si_velocities[:, robot] = kv * (direction_to_target + curvature_adjustment / norm_direction)
-            # si_velocities[:, robot] = kv * (direction_to_target)
+            # si_velocities[:, robot] = kv * (direction_to_target) (JK: This is velocity calculation without curvature, just for testing)
 
             # Append the current centroid and velocity to the lists
             cwi[:, robot] = np.array(new_centroids[robot])
 
+    '''(JK)
     # Call adaptive weight update
     weights = adaptive_weight_update(N, weights, costs)
+    '''
+
+    # Call adaptive weight update
+    adaptive_weight_update()
 
     # Make a copy of distance traveled array to calculate total distances
     total_distances = distance_traveled.copy()
@@ -315,7 +448,7 @@ for k in range(iterations):
     previous_y = current_y
 
     # Add the current iteration values to the global lists 
-    wij.append(weights.tolist())
+    wij.append(ci.tolist())
     Cwi.append(cwi.tolist())
     ui.append(si_velocities.tolist())
     dist_robot.append(total_distances.tolist())
