@@ -46,14 +46,14 @@ w_h = 1              # Weight for sensor quality cost
 w_r = 1              # Weight for sensor capacity cost
 alpha = 0.1          # Adaptive weight update rate
 curve_factor = 0.01  # Factor to add to the curvature to the movement
-S = {1}              # Set of sensor types
-N1 = {1,2,3,4,5}     # Set of robots with sensor type 1
-N2 = {}              # Set of robots with sensor type 1
-hi1 = [1,1,1,1,1]    # Set sensor health for sensor type 1
-hi2 = []             # Set sensor health for sensor type 2
-v_r = [1,1,1,1,1]    # Velocities set to 1 initially for all robots
-Rrs1 = [1,1,1,1,1]   # Set sensor health for sensor type 1
-Rrs2 = []            # Set sensor health for sensor type 2
+S = {1,2}              # Set of sensor types
+N1 = {1,2,3}     # Set of robots with sensor type 1
+N2 = {3,4,5}              # Set of robots with sensor type 1
+hi1 = [1,0.5,1]    # Set sensor health for sensor type 1
+hi2 = [1,0.5,1]             # Set sensor health for sensor type 2
+v_r = [1,1,2,1,1]    # Velocities set to 1 initially for all robots
+Rrs1 = [1,0.5,1]   # Set sensor health for sensor type 1
+Rrs2 = [1,0.5,1]            # Set sensor health for sensor type 2
 hi = hi1 + hi2       # Calculate overall sensor health array
 Rrs = Rrs1 + Rrs2    # Calculate overall sensor capacity array
 wi = np.zeros(N)     # Weights initially set to zero and calculated later (Only used for Power Cost Calculation)
@@ -330,7 +330,8 @@ for k in range(iterations):
                 w_v1[min_index1] += importance_value
             if len(list(N2)) > 0:
                 distances_2 -= weights_2
-                min_index2 = np.argmin(distances_2)
+                index2=np.argmin(distances_2)
+                min_index2 = list(N2)[index2]-1
                 c_v2[min_index2] += [ix * importance_value, iy * importance_value]
                 w_v2[min_index2] += importance_value
 
@@ -433,7 +434,6 @@ for k in range(iterations):
     # Call adaptive weight update
     weights = adaptive_weight_update(N, weights, costs)
     '''
-
     # Call adaptive weight update
     adaptive_weight_update()
 
