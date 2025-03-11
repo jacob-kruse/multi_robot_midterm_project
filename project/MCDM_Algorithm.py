@@ -157,10 +157,13 @@ def compute_cost():
             costs_2.append(total_cost_2)
 
 # def adaptive_weight_update(N, weights, costs, alpha=0.1, damping_factor=0.1, weight_limit=(0.1, 10)): (JK)
+
+
 def adaptive_weight_update():
     """
-    Function to update the weights of robots dynamically based on cost difference and other adaptive rules.
-    
+    Function to update the weights of robots dynamically based on cost difference, compensatory nature, 
+    adaptive weighting rules, and other factors.
+
     Parameters:
     - N (int): Number of robots
     - weights (list or array): Current weights of the robots
@@ -172,75 +175,82 @@ def adaptive_weight_update():
     Returns:
     - weights (list or array): Updated weights for all robots
     """
-    '''(JK)
-    for robot in range(N):
-
-        # Instantiate the summation variable to zero for the next calculation
-        summation = 0
-
-        # Calculate the summation for the weights by comparing the cost of the current robot to all of the others
-        for neighbor in range(N):
-            summation += (costs[robot] - weights[robot]) - (costs[neighbor] - weights[neighbor])
-        
-        # Calculate the weights
-        weights[robot] = (kc/(2*w_vw[robot])) * summation
-
-    print("Weights:", weights)
-
-    return weights
-    '''
+    alpha=0.1
+    damping_factor=0.95
+    adaptive_factor_increase=0.2
+    weight_limit = (0.1, 15)  # Increased upper limit for weights
+     # Initialize weight arrays for sensor types 1 and 2
+    weights_1 = np.zeros(len(N1))  # Assuming these are initialized somewhere
+    weights_2 = np.zeros(len(N2))
+    
+    # Track previous weights for early stopping or smooth adjustments
+    prev_weights_1 = np.copy(weights_1)
+    prev_weights_2 = np.copy(weights_2)
 
     for robot, sensor_types in robot_sensors.items():
-
-        # Instantiate the summation variables to zero for the next calculation
+        # Initialize the summation variables for compensatory nature and adaptive weights
         summation_1 = 0
         summation_2 = 0
-
-        # Find the current robot's weight for sensor type 1 if it has this sensor
-        if (robot+1) in N1:
-
-            # Get the index of the current robot in terms of the set of robots with sensor type 1
-            index = list(N1).index(robot+1)
-
-            # Compare the current robot to all of its neighbors with the same sensor type to calculate the weights
-            for neighbor in N1:
-
-                # Get the index of the current neighbor robot in terms of the set of robots with sensor type 1
-                neighbor_index = list(N1).index(neighbor)
+        
+        # Adaptive weighting parameters (can be dynamically adjusted based on conditions)
+        adaptive_factor_1 = alpha  # Can be adjusted based on conditions
+        adaptive_factor_2 = alpha  # Can be adjusted based on conditions
+        
+        # Compensatory Nature: If the cost of one criterion is low, increase weight for the other criterion
+        # Weights based on sensor type 1
+        if (robot + 1) in N1:
+            index = list(N1).index(robot + 1)
             
-                # Calculate the difference between all of the neighbors and multiply by the given factor to find the updated weight
+            # Check compensatory nature for sensor type 1
+            if costs_1[index] < min(costs_1):  # If cost is lower, increase weight for this robot
+                adaptive_factor_1 += adaptive_factor_increase   # Increase the adaptive factor for type 1
+            
+            # Update summation for sensor type 1
+            for neighbor in N1:
+                neighbor_index = list(N1).index(neighbor)
                 summation_1 += (costs_1[index] - weights_1[index]) - (costs_1[neighbor_index] - weights_1[neighbor_index])
-                weights_1[robot] = (kc/(2*w_v1[robot])) * summation_1
+            
+            # Update the weight dynamically with compensation
+            weights_1[index] += (kc / (2 * w_v1[robot])) * summation_1 * adaptive_factor_1
+            weights_1[index] *= damping_factor
+        # Weights based on sensor type 2
+        if (robot + 1) in N2:
+            index = list(N2).index(robot + 1)
+            
+            # Check compensatory nature for sensor type 2
+            if costs_2[index] < min(costs_2):  # If cost is lower, increase weight for this robot
+                adaptive_factor_2 += adaptive_factor_increase  # Increase the adaptive factor for type 2
 
-        # Find the 
-        # current robot's weight for sensor type 2 if it has this sensor
-        if (robot+1) in N2:
-
-            # Get the index of the current robot in terms of the set of robots with sensor type 2
-            index = list(N2).index(robot+1)
-
-            # Compare the current robot to all of its neighbors with the same sensor type to calculate the weights
+            # Update summation for sensor type 2
             for neighbor in N2:
-
-                # Get the index of the current neighbor robot in terms of the set of robots with sensor type 2
                 neighbor_index = list(N2).index(neighbor)
-                
-                # Calculate the difference between all of the neighbors and multiply by the given factor to find the updated weight
                 summation_2 += (costs_2[index] - weights_2[index]) - (costs_2[neighbor_index] - weights_2[neighbor_index])
-                weights_2[index] = (kc/(2*w_v2[robot])) * summation_2
+            
+            # Update the weight dynamically with compensation
+            weights_2[index] += (kc / (2 * w_v2[robot])) * summation_2 * adaptive_factor_2
+            weights_2[index] *= damping_factor
+        # Clip the weights to stay within the weight limit (min/max bound)
+        weights_1[index] = np.clip(weights_1[index], weight_limit[0], weight_limit[1])
+        weights_2[index] = np.clip(weights_2[index], weight_limit[0], weight_limit[1])
+
+    # Calculate the change in weights (used for adaptive learning or stopping criteria)
+    weight_change_1 = np.linalg.norm(weights_1 - prev_weights_1)
+    weight_change_2 = np.linalg.norm(weights_2 - prev_weights_2)
+
+    # Optionally, apply an adaptive learning rate reduction based on the rate of change
+    if weight_change_1 < 1e-5 and weight_change_2 < 1e-5:
+        alpha = max(0.01, alpha * 0.99)  # Reduce alpha after each iteration by 1%
 
     print("Weights for Sensor Type 1:", weights_1)
     print("Weights for Sensor Type 2:", weights_2)
 
-'''(JK)
-# Compute cost  for each robot
-for i in range(1, N + 1):
-    costs[i - 1] = compute_cost(i)
-'''
+    return weights_1, weights_2
 
 # Compute the costs for each robot before proceeding to algorithm
 compute_cost()
 
+weights_1 = np.zeros(len(N1))
+weights_2 = np.zeros(len(N2))
 # Iteration loop
 for k in range(iterations):
     x = r.get_poses()
@@ -266,8 +276,8 @@ for k in range(iterations):
     w_vw = np.zeros(N)
     w_vi = np.zeros(N)
     cwi = np.zeros((2,N))
-    weights_1 = np.zeros(len(N1))
-    weights_2= np.zeros(len(N2))
+    # weights_1 = np.zeros(len(N1))
+    # weights_2= np.zeros(len(N2))
     si_velocities = np.zeros((2,N))
     new_centroids = np.zeros((N,2))
     new_centroids_1 = np.zeros((N,2))
@@ -376,8 +386,8 @@ for k in range(iterations):
     cost_weights = ci.copy()
 
     # Dyanmically adjust kv to converge quicker
-    kv = max(200/((k/4)+50),1.0)
-
+    kv = np.mean(v_r) #overall speed is influenced by robot parameters
+    print(kv)
     # Iterate for the number of robots, this is the velocity and weight controller portion of the code
     # for robot in range(N): (JK)
     for robot, sensor_types in robot_sensors.items():
@@ -389,11 +399,11 @@ for k in range(iterations):
         # Calculate the summation for the weights (Only used for Power Cost Calculation)
         for neighbor in range(N):
             summation += (hi[robot] - wi_copy[robot]) - (hi[neighbor] - wi_copy[neighbor])
-            cost_summation += (ci[robots] - cost_weights[robots]) - (ci[neighbor] - cost_weights[neighbor])
+            cost_summation += (ci[robot] - cost_weights[robot]) - (ci[neighbor] - cost_weights[neighbor])
         
         # Calculate the new weights (Only used for Power Cost Calculation)
         wi[robot] += (kw/(2*w_vw[robot])) * summation
-        ci[robots] += (kc/(2*w_vi[robots])) * cost_summation
+        ci[robot] += (kc/(2*w_vi[robot])) * cost_summation
 
         # Calculate the distance travled from the previous iteration
         if previous_x is not None and previous_y is not None:
@@ -425,6 +435,7 @@ for k in range(iterations):
             
             # Calcualte the velocities of each robot
             si_velocities[:, robot] = kv * (direction_to_target + curvature_adjustment / norm_direction)
+            si_velocities[:, robot] *= v_r[robot] #robots with higher velocity values actually move faster
             # si_velocities[:, robot] = kv * (direction_to_target) (JK: This is velocity calculation without curvature, just for testing)
 
             # Append the current centroid and velocity to the lists
@@ -460,6 +471,7 @@ for k in range(iterations):
     total_Hc.append(Hc)
 
     # Check for convergence
+    
     if np.all(distance_traveled < convergence_threshold) and k > 3:
         converged_iteration = k + 1
         print(f"Converged at iteration {converged_iteration}")
