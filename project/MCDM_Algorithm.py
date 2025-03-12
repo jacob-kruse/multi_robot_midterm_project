@@ -220,7 +220,7 @@ def adaptive_weight_update():
             weight_change_2 = np.linalg.norm(weights_2 - prev_weights_2)
 
     # Optionally, apply an adaptive learning rate reduction based on the rate of change
-    if weight_change_1 < 1e-5 or weight_change_2 < 1e-5:
+    if weight_change_1 < 1e-5 or (weight_change_2!=None and weight_change_2 < 1e-5):
         alpha = max(0.01, alpha * 0.99)  # Reduce alpha after each iteration by 1%
 
     print("Weights for Sensor Type 1:", weights_1)
@@ -511,5 +511,6 @@ with open("output5.csv", mode="w", newline="") as file:
     writer.writerow(["Weights 2"])
     for index, value in enumerate(wij2, start=1):
         writer.writerow([f"Iteration {index}", value])
-
-r.call_at_scripts_end()
+plt.ioff()
+plt.show(block=True)
+#r.call_at_scripts_end()
