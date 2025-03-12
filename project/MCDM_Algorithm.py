@@ -58,6 +58,7 @@ hi = hi1 + hi2       # Calculate overall sensor health array
 Rrs = Rrs1 + Rrs2    # Calculate overall sensor capacity array
 wi = np.zeros(N)     # Weights initially set to zero and calculated later (Only used for Power Cost Calculation)
 ci = np.zeros(N)     # Costs for custom cost initially set to zero and calculated 
+costs = np.zeros(N)  # Costs for custom cost initially set to zero and calculated 
 costs_1= []          # Costs for sensor type 1 initially set to zero and calculated based on values above
 costs_2 = []         # Costs for sensor type 2 initially set to zero and calculated based on values above
 robot_sensors = {}   # A set that is calculated later that holds the sensor types for each robot
@@ -66,6 +67,7 @@ max_range = np.sqrt(((x_max-x_min) ** 2) + ((y_max-y_min) ** 2)) # Calculate the
 # Status and Performance Variables
 poses = []
 wij = []
+wij2 = []
 Cwi = []
 ui = []
 dist_robot = []
@@ -88,8 +90,16 @@ for i in range(N):
         assigned_sensors.add(2)
     robot_sensors[i] = assigned_sensors
 
+# Calculate costs for custom cost 
+for robot in range(1,N+1):
+    costs[robot-1] = v_r[robot-1]
+    if robot in N1:
+        costs[robot-1] = (1/len(S)) * (hi1[list(N1).index(robot)] + Rrs1[list(N1).index(robot)])
+    if robot in N2:
+        costs[robot-1] = (1/len(S)) * (hi2[list(N2).index(robot)] + Rrs2[list(N2).index(robot)])
+
 # Instantiate Robotarium object
-r = robotarium.Robotarium(number_of_robots=N, sim_in_real_time=True, initial_conditions=initial_conditions[0:N].T)
+r = robotarium.Robotarium(number_of_robots=N, sim_in_real_time=False, initial_conditions=initial_conditions[0:N].T)
 
 # Helper Functions for Simulation
 si_barrier_cert = create_single_integrator_barrier_certificate_with_boundary()
@@ -352,11 +362,17 @@ for k in range(iterations):
         # Calculate the summation for the weights (Only used for Power Cost Calculation)
         for neighbor in range(N):
             summation += (hi[robot] - wi_copy[robot]) - (hi[neighbor] - wi_copy[neighbor])
-            cost_summation += (ci[robot] - cost_weights[robot]) - (ci[neighbor] - cost_weights[neighbor])
+            cost_summation += (costs[robot] - cost_weights[robot]) - (costs[neighbor] - cost_weights[neighbor])
         
         # Calculate the new weights (Only used for Power Cost Calculation)
-        wi[robot] += (kw/(2*w_vw[robot])) * summation
-        ci[robot] += (kc/(2*w_vi[robot])) * cost_summation
+        if w_vw[robot] != 0:
+            wi[robot] = (kw/(2*w_vw[robot])) * summation
+        else:
+            wi[robot] = (kw/2) * summation
+        if w_vi[robot] != 0:
+            ci[robot] = (kc/(2*w_vi[robot])) * cost_summation
+        else:
+            ci[robot] = (kc/2) * cost_summation
 
         # Calculate the distance travled from the previous iteration
         if previous_x is not None and previous_y is not None:
@@ -403,7 +419,7 @@ for k in range(iterations):
     previous_y = current_y
 
     # Add the current iteration values to the global lists 
-    wij.append(ci.tolist())
+    wij.append(weights_1.tolist())
     Cwi.append(cwi.tolist())
     ui.append(si_velocities.tolist())
     dist_robot.append(total_distances.tolist())
@@ -412,6 +428,8 @@ for k in range(iterations):
     total_Hv.append(Hv)
     total_Hr.append(Hr)
     total_Hc.append(Hc)
+    if costs_2:
+        wij2.append(weights_2.tolist())
 
     # Check for convergence
     
@@ -487,5 +505,11 @@ with open("output5.csv", mode="w", newline="") as file:
         writer.writerow([f"Iteration {index}: {value}"])
     writer.writerow([])
     writer.writerow(["Proposed Algorithm"])
+    writer.writerow([])
+    writer.writerow([f"{len(list(S))}"])
+    writer.writerow([])
+    writer.writerow(["Weights 2"])
+    for index, value in enumerate(wij2, start=1):
+        writer.writerow([f"Iteration {index}", value])
 
 r.call_at_scripts_end()

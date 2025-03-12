@@ -6,6 +6,7 @@ def plot_weights(csv_file):
 
     iterations = []
     robot_weights = {i: [] for i in range(5)}
+    robot_weights_2 = {i: [] for i in range(5)}
 
     with open(csv_file, "r") as file:
         reader = csv.reader(file)
@@ -32,6 +33,14 @@ def plot_weights(csv_file):
             elif counter == (10 * total_iterations + 21):
                 label = row[0]
 
+            # Extract the second weights data from the corresponding rows
+            elif ((10 * total_iterations + 25) < counter < (11 * total_iterations + 26)) and label == "Proposed Algorithm":
+
+                weights_2 = ast.literal_eval(row[1])  # Convert string to list
+
+                for i in range(len(weights_2)):
+                    robot_weights_2[i].append(weights_2[i])
+
             counter += 1
 
     # Plot robot positions over iterations
@@ -41,8 +50,21 @@ def plot_weights(csv_file):
         plt.plot(iterations, weights, linestyle="-", label=f"Robot {robot_id+1}")
 
     plt.xlabel("Iteration")
-    plt.ylabel("Weight")
-    plt.title("Robot Weights")
+    plt.ylabel("Weights 1")
+    plt.title("Robot Weights for Sensor Type 1")
+    plt.suptitle(f"Scenario 1 - {label}")
+    plt.legend()
+    plt.grid()
+    plt.show()
+
+    plt.figure(figsize=(8, 6))
+
+    for robot_id, weights in robot_weights_2.items():
+        plt.plot(iterations, weights, linestyle="-", label=f"Robot {robot_id+1}")
+
+    plt.xlabel("Iteration")
+    plt.ylabel("Weights 2")
+    plt.title("Robot Weights for Sensor Type 2")
     plt.suptitle(f"Scenario 1 - {label}")
     plt.legend()
     plt.grid()

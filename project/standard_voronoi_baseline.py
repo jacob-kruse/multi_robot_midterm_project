@@ -77,7 +77,7 @@ previous_y = None
 converged_iteration = -1
 
 # Instantiate Robotarium object
-r = robotarium.Robotarium(number_of_robots=N, sim_in_real_time=True, initial_conditions=initial_conditions[0:N].T)
+r = robotarium.Robotarium(number_of_robots=N, sim_in_real_time=False, initial_conditions=initial_conditions[0:N].T)
 
 # Helper Functions for Simulation
 si_barrier_cert = create_single_integrator_barrier_certificate_with_boundary()
@@ -200,8 +200,14 @@ for k in range(iterations):
             cost_summation += (costs[robots] - cost_weights[robots]) - (costs[neighbor] - cost_weights[neighbor])
         
         # Calculate the new weights
-        wi[robots] += (kw/(2*w_vw[robots])) * summation
-        ci[robots] += (kc/(2*w_vc[robots])) * cost_summation
+        if w_vw[robots] != 0:
+            wi[robots] = (kw/(2*w_vw[robots])) * summation
+        else:
+            wi[robots] = (kw/2) * summation
+        if w_vc[robots] != 0:
+            ci[robots] = (kc/(2*w_vc[robots])) * cost_summation
+        else:
+            ci[robots] = (kc/2) * cost_summation
 
         # Calculate the distance travled from the previous iteration
         if previous_x is not None and previous_y is not None:
@@ -323,6 +329,8 @@ with open("output.csv", mode="w", newline="") as file:
         writer.writerow([f"Iteration {index}: {value}"])
     writer.writerow([])
     writer.writerow(["Standard Voronoi Baseline"])
+    writer.writerow([])
+    writer.writerow([f"{len(list(S))}"])
 
 #Call at end of script to print debug information and for your script to run on the Robotarium server properly
 r.call_at_scripts_end()
